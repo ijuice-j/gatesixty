@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/time_formatting.dart';
-import '../../../settings/presentation/settings_controller.dart';
 import '../../domain/entities/schedule_status.dart';
 import '../providers/schedule_providers.dart';
+import 'free_time_label.dart';
 
 /// The headline pill: the current activity (or "Free"), time remaining and an
 /// animated live dot. Tapping it opens the agenda.
@@ -16,7 +16,6 @@ class NowTag extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(scheduleStatusProvider);
-    final use24Hour = ref.watch(settingsProvider.select((s) => s.use24Hour));
     final current = status.current;
     final accent = current?.color;
 
@@ -55,8 +54,10 @@ class NowTag extends ConsumerWidget {
               ),
               const SizedBox(width: 11),
               Flexible(
-                child: Text(
-                  current == null ? 'Free 🎉' : current.label,
+                child: Text.rich(
+                  current == null
+                      ? freeTimeLabelSpan(15)
+                      : TextSpan(text: current.label),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -72,7 +73,7 @@ class NowTag extends ConsumerWidget {
                 style: TextStyle(color: AppColors.tagSeparator),
               ),
               const SizedBox(width: 11),
-              _RemainingText(status: status, use24Hour: use24Hour),
+              _RemainingText(status: status),
             ],
           ),
         ),
@@ -81,12 +82,11 @@ class NowTag extends ConsumerWidget {
   }
 }
 
-/// The "X left" / "until HH:mm · Y" descriptor on the right of the tag.
+/// The `<duration> left` (or "all day") descriptor on the right of the tag.
 class _RemainingText extends StatelessWidget {
-  const _RemainingText({required this.status, required this.use24Hour});
+  const _RemainingText({required this.status});
 
   final ScheduleStatus status;
-  final bool use24Hour;
 
   @override
   Widget build(BuildContext context) {
@@ -101,40 +101,22 @@ class _RemainingText extends StatelessWidget {
       fontFeatures: [FontFeature.tabularFigures()],
     );
 
-    if (status.current != null) {
-      return Text.rich(
-        TextSpan(
-          children: [
-            const TextSpan(text: 'until '),
-            TextSpan(
-              text: formatClock(
-                status.current!.endMinute,
-                use24Hour: use24Hour,
-              ),
-              style: strong,
-            ),
-            TextSpan(
-              text: ' · ${formatDuration(status.remainingMinutes)} left',
-            ),
-          ],
-        ),
-        style: base,
-      );
-    }
-
-    if (status.next == null) {
+    // Free with nothing else on the calendar today.
+    if (status.current == null && status.next == null) {
       return const Text('all day', style: base);
     }
 
+    // Active event → time until it ends; free now → time until the next event
+    // starts. Both render as "<duration> left", so the free tag shares the
+    // active tag's structure. No end time here — that lives in the NEXT pill.
+    final minutes = status.current != null
+        ? status.remainingMinutes
+        : status.minutesUntilNext;
     return Text.rich(
       TextSpan(
         children: [
-          const TextSpan(text: 'until '),
-          TextSpan(
-            text: formatClock(status.next!.startMinute, use24Hour: use24Hour),
-            style: strong,
-          ),
-          TextSpan(text: ' · ${formatDuration(status.minutesUntilNext)}'),
+          TextSpan(text: formatDuration(minutes), style: strong),
+          const TextSpan(text: ' left'),
         ],
       ),
       style: base,

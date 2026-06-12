@@ -73,4 +73,49 @@ void main() {
       expect(status.next, isNull);
     });
   });
+
+  group('ScheduleStatus.resolve previous (PAST block)', () {
+    // 09:00–10:00 and 20:00–21:00, both one-off (non-wrapping) today.
+    const morning = ScheduleEvent(
+      id: 'morning',
+      name: 'Morning',
+      emoji: '🌅',
+      color: Color(0xFFCC9900),
+      startMinute: 540,
+      endMinute: 600,
+    );
+    const evening = ScheduleEvent(
+      id: 'evening',
+      name: 'Evening',
+      emoji: '🌙',
+      color: Color(0xFF334488),
+      startMinute: 1200,
+      endMinute: 1260,
+    );
+
+    test('no PAST before the first event — a future block is not "past"', () {
+      // 07:00: nothing has ended; the 20:00 block must not wrap in as "past".
+      final status = ScheduleStatus.resolve([morning, evening], 420);
+      expect(status.previous, isNull);
+    });
+
+    test('picks the most recently ended block', () {
+      // 11:00: the morning block ended at 10:00.
+      final status = ScheduleStatus.resolve([morning, evening], 660);
+      expect(status.previous?.id, 'morning');
+    });
+
+    test('stale blocks (>12h ago) are not shown as past', () {
+      // 23:00: morning ended 13h ago — too stale to be "what just finished".
+      final status = ScheduleStatus.resolve([morning], 1380);
+      expect(status.previous, isNull);
+    });
+
+    test('the active block is never its own past', () {
+      // 09:30: morning is active; nothing else has ended.
+      final status = ScheduleStatus.resolve([morning, evening], 570);
+      expect(status.current?.id, 'morning');
+      expect(status.previous, isNull);
+    });
+  });
 }

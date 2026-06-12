@@ -7,6 +7,7 @@ class ScheduleStatus {
   const ScheduleStatus({
     this.current,
     this.next,
+    this.previous,
     this.minutesUntilNext = 0,
     this.remainingMinutes = 0,
     this.progress = 0,
@@ -18,6 +19,10 @@ class ScheduleStatus {
 
   /// The soonest upcoming event (by wall-clock), or `null` if none exist.
   final ScheduleEvent? next;
+
+  /// The most recently finished block — the "just ended" event — or `null` when
+  /// nothing has ended within the last 12h. Powers the tap-to-reveal PAST pill.
+  final ScheduleEvent? previous;
 
   /// Minutes until [next] starts.
   final double minutesUntilNext;
@@ -65,34 +70,44 @@ class ScheduleStatus {
       }
     }
 
-    // Progress through the current free gap: from the most recently ended
-    // event up to the next event's start.
-    var freeProgress = 0.0;
-    final nextEvent = next;
-    if (current == null && nextEvent != null && events.isNotEmpty) {
-      var smallestAgo = double.infinity;
-      double? gapStart;
-      for (final event in events) {
-        final ago = (nowMinute - event.endMinute + 1440) % 1440;
-        if (ago < smallestAgo) {
-          smallestAgo = ago;
-          gapStart = event.endMinute.toDouble();
-        }
+    // The most recently *ended* block — the "PAST" event, and the anchor for
+    // the current free gap. Only events that have genuinely finished on today's
+    // timeline qualify, so an upcoming event is never mistaken for a past one
+    // through the midnight wrap. A stale block (>12h ago) isn't "what just
+    // finished", so it doesn't count.
+    ScheduleEvent? previous;
+    var bestEnd = -1.0;
+    for (final event in events) {
+      if (identical(event, current)) continue;
+      final ended = event.wrapsMidnight
+          ? (nowMinute >= event.endMinute && nowMinute < event.startMinute)
+          : (nowMinute >= event.endMinute);
+      if (ended && event.endMinute > bestEnd) {
+        bestEnd = event.endMinute.toDouble();
+        previous = event;
       }
-      if (gapStart != null) {
-        final total = (nextEvent.startMinute - gapStart + 1440) % 1440;
-        // Only meaningful for intra-day gaps. A long/overnight gap — or the
-        // lead-in before the day's first event, where the previous event wraps
-        // to "yesterday" — reads as empty rather than misleadingly near-full.
-        if (total > 0 && total <= 720) {
-          freeProgress = (smallestAgo / total).clamp(0.0, 1.0);
-        }
+    }
+    if (previous != null && nowMinute - previous.endMinute > 720) {
+      previous = null;
+    }
+
+    // Progress through the current free gap: from [previous]'s end up to
+    // [next]'s start. Only meaningful for a sane intra-day gap — a long or
+    // overnight gap reads as empty rather than misleadingly near-full.
+    var freeProgress = 0.0;
+    if (current == null && next != null && previous != null) {
+      final gapStart = previous.endMinute.toDouble();
+      final elapsed = (nowMinute - gapStart + 1440) % 1440;
+      final total = (next.startMinute - gapStart + 1440) % 1440;
+      if (total > 0 && total <= 720) {
+        freeProgress = (elapsed / total).clamp(0.0, 1.0);
       }
     }
 
     return ScheduleStatus(
       current: current,
       next: next,
+      previous: previous,
       minutesUntilNext: next == null ? 0 : bestDelta,
       remainingMinutes: current?.remainingFrom(nowMinute) ?? 0,
       progress: current?.progressAt(nowMinute) ?? 0,

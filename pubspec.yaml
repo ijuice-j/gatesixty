@@ -41,6 +41,7 @@ dependencies:
   google_sign_in: ^7.2.0
   googleapis: ^16.0.0
   http: ^1.6.0
+  flutter_svg: ^2.0.10
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -67,6 +68,13 @@ flutter:
 
   assets:
     - assets/audio/oneup_mushroom.mp3
+    - assets/emoji/party_popper.svg
+
+  fonts:
+    - family: Instrument Sans
+      fonts:
+        # Variable font — Flutter maps TextStyle.fontWeight onto its `wght` axis.
+        - asset: assets/fonts/InstrumentSans.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:
