@@ -70,43 +70,37 @@ class ScheduleStatus {
       }
     }
 
-    // The most recently ended block ("PAST"). Skip the active event (it hasn't
-    // ended yet); ignore anything whose end wraps to more than 12h ago, which
-    // would be a far-future block rather than something just finished.
+    // The most recently *ended* block — the "PAST" event, and the anchor for
+    // the current free gap. Only events that have genuinely finished on today's
+    // timeline qualify, so an upcoming event is never mistaken for a past one
+    // through the midnight wrap. A stale block (>12h ago) isn't "what just
+    // finished", so it doesn't count.
     ScheduleEvent? previous;
-    var bestAgo = double.infinity;
+    var bestEnd = -1.0;
     for (final event in events) {
       if (identical(event, current)) continue;
-      final ago = (nowMinute - event.endMinute + 1440) % 1440;
-      if (ago < bestAgo) {
-        bestAgo = ago;
+      final ended = event.wrapsMidnight
+          ? (nowMinute >= event.endMinute && nowMinute < event.startMinute)
+          : (nowMinute >= event.endMinute);
+      if (ended && event.endMinute > bestEnd) {
+        bestEnd = event.endMinute.toDouble();
         previous = event;
       }
     }
-    if (bestAgo > 720) previous = null;
+    if (previous != null && nowMinute - previous.endMinute > 720) {
+      previous = null;
+    }
 
-    // Progress through the current free gap: from the most recently ended
-    // event up to the next event's start.
+    // Progress through the current free gap: from [previous]'s end up to
+    // [next]'s start. Only meaningful for a sane intra-day gap — a long or
+    // overnight gap reads as empty rather than misleadingly near-full.
     var freeProgress = 0.0;
-    final nextEvent = next;
-    if (current == null && nextEvent != null && events.isNotEmpty) {
-      var smallestAgo = double.infinity;
-      double? gapStart;
-      for (final event in events) {
-        final ago = (nowMinute - event.endMinute + 1440) % 1440;
-        if (ago < smallestAgo) {
-          smallestAgo = ago;
-          gapStart = event.endMinute.toDouble();
-        }
-      }
-      if (gapStart != null) {
-        final total = (nextEvent.startMinute - gapStart + 1440) % 1440;
-        // Only meaningful for intra-day gaps. A long/overnight gap — or the
-        // lead-in before the day's first event, where the previous event wraps
-        // to "yesterday" — reads as empty rather than misleadingly near-full.
-        if (total > 0 && total <= 720) {
-          freeProgress = (smallestAgo / total).clamp(0.0, 1.0);
-        }
+    if (current == null && next != null && previous != null) {
+      final gapStart = previous.endMinute.toDouble();
+      final elapsed = (nowMinute - gapStart + 1440) % 1440;
+      final total = (next.startMinute - gapStart + 1440) % 1440;
+      if (total > 0 && total <= 720) {
+        freeProgress = (elapsed / total).clamp(0.0, 1.0);
       }
     }
 

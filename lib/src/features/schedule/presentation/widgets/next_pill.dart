@@ -33,7 +33,13 @@ class _UpcomingPillState extends ConsumerState<UpcomingPill> {
     super.dispose();
   }
 
-  void _revealPast() {
+  void _onTap() {
+    // Already showing PAST → tap dismisses it early, back to NEXT.
+    if (_showPast) {
+      _revertTimer?.cancel();
+      setState(() => _showPast = false);
+      return;
+    }
     // Nothing to reveal if no block has finished yet.
     if (ref.read(scheduleStatusProvider).previous == null) return;
     setState(() => _showPast = true);
@@ -47,7 +53,7 @@ class _UpcomingPillState extends ConsumerState<UpcomingPill> {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _showPast ? null : _revealPast,
+      onTap: _onTap,
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 350),
         transitionBuilder: (child, animation) =>

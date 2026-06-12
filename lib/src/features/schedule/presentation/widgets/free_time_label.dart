@@ -19,6 +19,7 @@ InlineSpan freeTimeLabelSpan(double fontSize) {
           _confettiAsset,
           width: fontSize * 1.2,
           height: fontSize * 1.2,
+          semanticsLabel: 'party popper',
         ),
       ),
     ],
