@@ -7,6 +7,7 @@ class ScheduleStatus {
   const ScheduleStatus({
     this.current,
     this.next,
+    this.previous,
     this.minutesUntilNext = 0,
     this.remainingMinutes = 0,
     this.progress = 0,
@@ -18,6 +19,10 @@ class ScheduleStatus {
 
   /// The soonest upcoming event (by wall-clock), or `null` if none exist.
   final ScheduleEvent? next;
+
+  /// The most recently finished block — the "just ended" event — or `null` when
+  /// nothing has ended within the last 12h. Powers the tap-to-reveal PAST pill.
+  final ScheduleEvent? previous;
 
   /// Minutes until [next] starts.
   final double minutesUntilNext;
@@ -65,6 +70,21 @@ class ScheduleStatus {
       }
     }
 
+    // The most recently ended block ("PAST"). Skip the active event (it hasn't
+    // ended yet); ignore anything whose end wraps to more than 12h ago, which
+    // would be a far-future block rather than something just finished.
+    ScheduleEvent? previous;
+    var bestAgo = double.infinity;
+    for (final event in events) {
+      if (identical(event, current)) continue;
+      final ago = (nowMinute - event.endMinute + 1440) % 1440;
+      if (ago < bestAgo) {
+        bestAgo = ago;
+        previous = event;
+      }
+    }
+    if (bestAgo > 720) previous = null;
+
     // Progress through the current free gap: from the most recently ended
     // event up to the next event's start.
     var freeProgress = 0.0;
@@ -93,6 +113,7 @@ class ScheduleStatus {
     return ScheduleStatus(
       current: current,
       next: next,
+      previous: previous,
       minutesUntilNext: next == null ? 0 : bestDelta,
       remainingMinutes: current?.remainingFrom(nowMinute) ?? 0,
       progress: current?.progressAt(nowMinute) ?? 0,

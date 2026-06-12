@@ -136,13 +136,19 @@ class _TagArea extends StatelessWidget {
       child: Transform.scale(
         scale: _kTagScale,
         alignment: Alignment.topCenter,
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            NowTag(),
-            SizedBox(height: 13),
-            NextPill(),
-          ],
+        // Instrument Sans for the tag chrome (the original design font). Tag
+        // TextStyles set no fontFamily, so they inherit this; the flip clock
+        // sits outside this subtree and keeps the default face.
+        child: DefaultTextStyle.merge(
+          style: const TextStyle(fontFamily: 'Instrument Sans'),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              NowTag(),
+              SizedBox(height: 13),
+              UpcomingPill(),
+            ],
+          ),
         ),
       ),
     );
