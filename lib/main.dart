@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'src/app/app.dart';
+import 'src/core/config/app_config.dart';
 import 'src/features/auth/presentation/auth_providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize the Supabase backend (activity-tracking ledger). Its session is
+  // established later by exchanging the Google ID token (see SupabaseAuthBridge).
+  await Supabase.initialize(
+    url: AppConfig.supabaseUrl,
+    publishableKey: AppConfig.supabasePublishableKey,
+  );
   // Lock to landscape — this is a wall/desk clock layout.
   await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.landscapeLeft,

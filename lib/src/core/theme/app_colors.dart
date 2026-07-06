@@ -33,6 +33,11 @@ class AppColors {
   static const Color nextName = Color(0xFF8A8A8A);
   static const Color nextTime = Color(0xFF6A6A6A);
 
+  // Activity tracking (mark-done button)
+  static const Color doneAccent = Color(0xFF5BB974); // filled "done" green
+  static const Color doneIdleBorder = Color(0xFF2E2E2E);
+  static const Color doneIdleIcon = Color(0xFF6E6E6E);
+
   // Agenda
   static const Color agendaScrim = Color(0xE6000000); // rgba(0,0,0,0.9)
   static const Color agendaTitle = Color(0xFF555555);

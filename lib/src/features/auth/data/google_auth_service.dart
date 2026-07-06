@@ -28,6 +28,11 @@ class GoogleAuthService {
 
   bool get isSignedIn => _ready;
 
+  /// The current Google ID token (a JWT), or `null` when no user is present.
+  /// Exchanged for a Supabase session (`signInWithIdToken`) so RLS-protected
+  /// writes run as this user. In v7 `authentication` is a synchronous getter.
+  String? get idToken => _currentUser?.authentication.idToken;
+
   /// Emits `true` once authenticated + authorized, `false` on sign-out.
   Stream<bool> get signedInChanges => _readyController.stream;
 

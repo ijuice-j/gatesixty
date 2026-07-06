@@ -14,12 +14,21 @@ class ScheduleEvent {
     required this.color,
     required this.startMinute,
     required this.endMinute,
+    this.plannedStart,
+    this.plannedEnd,
   });
 
   final String id;
   final String name;
   final String emoji;
   final Color color;
+
+  /// The event's real wall-clock start/end (local), when known. Carried
+  /// alongside the minute-of-day fields so activity tracking can snapshot the
+  /// true planned window — including the actual date — into its ledger. Null
+  /// for sources that only have a time-of-day (e.g. the legacy local routine).
+  final DateTime? plannedStart;
+  final DateTime? plannedEnd;
 
   /// Minute-of-day in `0..1439`.
   final int startMinute;
