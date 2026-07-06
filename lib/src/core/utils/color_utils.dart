@@ -15,6 +15,15 @@ Color mixColor(Color color, double amount) {
   );
 }
 
+/// `#RRGGBB` hex string for [color] (alpha ignored). Used to snapshot an
+/// event's accent color into the tracking ledger so a past outcome keeps its
+/// colour even if the source calendar event later changes.
+String hexFromColor(Color color) {
+  int channel(double c) => (c * 255).round().clamp(0, 255);
+  final rgb = (channel(color.r) << 16) | (channel(color.g) << 8) | channel(color.b);
+  return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+}
+
 /// Horizontal gradient used for the active progress bar — a lightened-to-
 /// darkened sweep of the event's accent color. Ported from `barGradient()`.
 LinearGradient barGradient(Color color) => LinearGradient(

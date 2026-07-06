@@ -8,11 +8,14 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../../core/audio/sound_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../auth/presentation/auth_providers.dart';
+import '../../../auth/presentation/supabase_auth_bridge.dart';
 import '../../../schedule/domain/entities/schedule_status.dart';
 import '../../../schedule/presentation/providers/schedule_providers.dart';
 import '../../../schedule/presentation/widgets/next_pill.dart';
 import '../../../schedule/presentation/widgets/now_tag.dart';
 import '../../../settings/presentation/settings_controller.dart';
+import '../../../tracking/presentation/providers/tracking_providers.dart';
+import '../../../tracking/presentation/widgets/mark_done_button.dart';
 import '../widgets/flip_clock.dart';
 
 /// Size factor applied to the tag area (NowTag + NextPill).
@@ -79,6 +82,12 @@ class _ClockScreenState extends ConsumerState<ClockScreen>
 
     final signedIn = ref.watch(authStateProvider).value ?? false;
 
+    // Keep the Supabase session mirror and the tracking commit-engine alive
+    // while the clock is on screen. Watching `.notifier` (a stable object)
+    // instantiates them without rebuilding this screen on their state changes.
+    ref.watch(supabaseAuthBridgeProvider.notifier);
+    ref.watch(trackingControllerProvider.notifier);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: GestureDetector(
@@ -144,7 +153,13 @@ class _TagArea extends StatelessWidget {
           child: const Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              NowTag(),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  NowTag(),
+                  MarkDoneButton(),
+                ],
+              ),
               SizedBox(height: 13),
               UpcomingPill(),
             ],
