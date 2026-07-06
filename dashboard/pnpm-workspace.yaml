@@ -1,0 +1,5 @@
+# Approve build scripts for these vetted native deps (pnpm blocks all by
+# default). sharp = Next.js image optimization; unrs-resolver = ESLint resolver.
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
