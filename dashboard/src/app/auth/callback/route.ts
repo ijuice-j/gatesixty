@@ -12,8 +12,24 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      // Persist the Google refresh token so we can mint Calendar access tokens
+      // later: the session's provider_token expires in ~1h and Supabase never
+      // refreshes it. Google only returns a refresh token because login asks for
+      // access_type=offline + prompt=consent, so we get a fresh one each sign-in.
+      const refreshToken = data.session?.provider_refresh_token;
+      const userId = data.session?.user.id;
+      if (refreshToken && userId) {
+        await supabase.from("google_credentials").upsert(
+          {
+            user_id: userId,
+            refresh_token: refreshToken,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" },
+        );
+      }
       return NextResponse.redirect(`${origin}${next}`);
     }
   }
