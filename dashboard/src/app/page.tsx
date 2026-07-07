@@ -7,6 +7,7 @@ import { reconstructDay, type DayItem, type DayStatus } from "@/lib/activity/day
 import { zonedDayRange, dateStringInTz, shiftDate } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "./timezone-sync";
+import { toggleDone } from "./actions";
 
 // Reconstruction reads the live calendar per request — never cache.
 export const dynamic = "force-dynamic";
@@ -157,7 +158,7 @@ export default async function Home({
                   {formatWindow(item.start, item.end, tz)}
                 </p>
               </div>
-              <StatusPill status={item.status} />
+              <StatusControl item={item} date={date} />
             </li>
           ))}
         </ul>
@@ -166,23 +167,52 @@ export default async function Home({
   );
 }
 
-function StatusPill({ status }: { status: DayStatus }) {
-  const styles: Record<DayStatus, string> = {
-    done: "bg-emerald-500/10 text-emerald-400",
-    not_done: "bg-amber-500/10 text-amber-400",
-    upcoming: "bg-neutral-500/10 text-neutral-400",
-  };
-  const label: Record<DayStatus, string> = {
-    done: "Done",
-    not_done: "Missed",
-    upcoming: "Upcoming",
-  };
+const STATUS_STYLES: Record<DayStatus, string> = {
+  done: "bg-emerald-500/10 text-emerald-400",
+  not_done: "bg-amber-500/10 text-amber-400",
+  upcoming: "bg-neutral-500/10 text-neutral-400",
+};
+const STATUS_LABEL: Record<DayStatus, string> = {
+  done: "Done",
+  not_done: "Missed",
+  upcoming: "Upcoming",
+};
+
+/**
+ * The status pill. For past events (done / not_done) it's a toggle button that
+ * backfills or clears the ledger row; upcoming events have no outcome yet, so
+ * they render as a static pill.
+ */
+function StatusControl({ item, date }: { item: DayItem; date: string }) {
+  if (item.status === "upcoming") {
+    return (
+      <span
+        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES.upcoming}`}
+      >
+        {STATUS_LABEL.upcoming}
+      </span>
+    );
+  }
+
+  const makeDone = item.status !== "done"; // clicking flips the outcome
   return (
-    <span
-      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${styles[status]}`}
-    >
-      {label[status]}
-    </span>
+    <form action={toggleDone} className="shrink-0">
+      <input type="hidden" name="gcal_event_id" value={item.id} />
+      <input type="hidden" name="occurred_on" value={date} />
+      <input type="hidden" name="make_done" value={String(makeDone)} />
+      <input type="hidden" name="title" value={item.title} />
+      <input type="hidden" name="planned_start" value={item.start ?? ""} />
+      <input type="hidden" name="planned_end" value={item.end ?? ""} />
+      <input type="hidden" name="color" value={item.color} />
+      <button
+        type="submit"
+        aria-label={makeDone ? "Mark done" : "Mark not done"}
+        title={makeDone ? "Mark done" : "Mark not done"}
+        className={`cursor-pointer rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ring-transparent transition hover:ring-current ${STATUS_STYLES[item.status]}`}
+      >
+        {STATUS_LABEL[item.status]}
+      </button>
+    </form>
   );
 }
 
