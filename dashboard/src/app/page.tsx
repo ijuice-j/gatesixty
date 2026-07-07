@@ -4,9 +4,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { listCalendarEvents, GoogleAuthExpiredError } from "@/lib/google/calendar";
 import { reconstructDay, type DayItem, type DayStatus } from "@/lib/activity/day";
-import { zonedDayRange, dateStringInTz, shiftDate, isValidTimeZone } from "@/lib/time";
+import { zonedDayRange, dateStringInTz, shiftDate, resolveViewerTimeZone } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "./timezone-sync";
+import { DashboardHeader } from "./header";
 import { toggleDone } from "./actions";
 
 // Reconstruction reads the live calendar per request — never cache.
@@ -24,14 +25,13 @@ export default async function Home({
   if (!user) redirect("/login");
 
   const cookieStore = await cookies();
-  const rawTz = cookieStore.get("tz")?.value;
-  // Whether the server already knows a valid viewer timezone. `rawTz` is a
-  // user-settable cookie, so validate it — an invalid zone would otherwise
-  // throw RangeError out of every Intl call below. Until it's resolved we skip
-  // the calendar fetch and let <TimezoneSync> report the real zone, so the day
-  // is fetched once (for the right day) instead of once for UTC then again.
-  const tzResolved = !!rawTz && isValidTimeZone(rawTz);
-  const tz = tzResolved ? (rawTz as string) : "UTC";
+  // `rawTz` is a user-settable cookie; resolveViewerTimeZone validates it (an
+  // invalid zone would otherwise throw RangeError out of every Intl call). Until
+  // it's resolved we skip the calendar fetch and let <TimezoneSync> report the
+  // real zone, so the day is fetched once (for the right day) not twice.
+  const { tz, resolved: tzResolved } = resolveViewerTimeZone(
+    cookieStore.get("tz")?.value,
+  );
 
   if (!tzResolved) {
     return (
@@ -97,20 +97,18 @@ export default async function Home({
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
       <TimezoneSync current={tz} resolved />
+      <DashboardHeader email={user.email} />
 
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Activity</h1>
-          <p className="text-sm text-neutral-500">{user.email}</p>
-        </div>
-        <form action="/auth/signout" method="post">
-          <button className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm text-neutral-400 transition hover:text-neutral-200">
-            Sign out
-          </button>
-        </form>
-      </header>
+      <div className="mt-6 flex justify-end">
+        <Link
+          href={`/week?date=${date}`}
+          className="text-xs text-neutral-500 underline-offset-2 transition hover:text-neutral-300 hover:underline"
+        >
+          Week view →
+        </Link>
+      </div>
 
-      <nav className="mt-8 flex items-center justify-between">
+      <nav className="mt-4 flex items-center justify-between">
         <Link
           href={`/?date=${shiftDate(date, -1)}`}
           className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm text-neutral-400 transition hover:text-neutral-200"

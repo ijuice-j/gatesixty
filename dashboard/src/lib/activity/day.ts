@@ -98,3 +98,23 @@ export function reconstructDay(
   items.sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""));
   return items;
 }
+
+/** Per-day tallies for the week overview. */
+export type DaySummary = {
+  total: number;
+  done: number;
+  missed: number;
+  upcoming: number;
+};
+
+export function summarizeDay(items: DayItem[]): DaySummary {
+  let done = 0;
+  let missed = 0;
+  let upcoming = 0;
+  for (const it of items) {
+    if (it.status === "done") done++;
+    else if (it.status === "not_done") missed++;
+    else upcoming++;
+  }
+  return { total: items.length, done, missed, upcoming };
+}
