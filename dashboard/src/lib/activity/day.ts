@@ -95,7 +95,15 @@ export function reconstructDay(
     });
   }
 
-  items.sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""));
+  // Sort by true instant, not by string. Done rows come from the ledger in UTC
+  // (…+00:00) while missed/upcoming come live from Google in the calendar's
+  // local offset (…+05:30), so a lexical compare of the two representations
+  // mis-orders them — e.g. a just-marked-done event would jump ahead of an
+  // earlier live one. Date.parse normalises both to a millisecond instant.
+  items.sort(
+    (a, b) =>
+      (a.start ? Date.parse(a.start) : 0) - (b.start ? Date.parse(b.start) : 0),
+  );
   return items;
 }
 
