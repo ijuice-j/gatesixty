@@ -83,3 +83,23 @@ export function shiftDate(dateStr: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** Monday (`YYYY-MM-DD`) of the week containing `dateStr`. Pure calendar math,
+ *  so it's timezone-independent. */
+export function weekStartDate(dateStr: string): string {
+  const dow = new Date(`${dateStr}T00:00:00Z`).getUTCDay(); // 0=Sun..6=Sat
+  return shiftDate(dateStr, -((dow + 6) % 7)); // days back to Monday
+}
+
+/**
+ * Resolve the viewer's timezone from the raw `tz` cookie. `resolved` is false
+ * when the cookie is absent or invalid — callers render a placeholder and let
+ * <TimezoneSync> report the real zone, avoiding a UTC-then-refresh double fetch.
+ */
+export function resolveViewerTimeZone(rawTz: string | undefined): {
+  tz: string;
+  resolved: boolean;
+} {
+  const resolved = !!rawTz && isValidTimeZone(rawTz);
+  return { tz: resolved ? (rawTz as string) : "UTC", resolved };
+}
