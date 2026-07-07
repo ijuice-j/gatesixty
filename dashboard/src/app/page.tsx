@@ -4,7 +4,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { listCalendarEvents, GoogleAuthExpiredError } from "@/lib/google/calendar";
 import { reconstructDay, type DayItem, type DayStatus } from "@/lib/activity/day";
-import { zonedDayRange, dateStringInTz, shiftDate } from "@/lib/time";
+import { zonedDayRange, dateStringInTz, shiftDate, isValidTimeZone } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "./timezone-sync";
 import { toggleDone } from "./actions";
@@ -24,13 +24,30 @@ export default async function Home({
   if (!user) redirect("/login");
 
   const cookieStore = await cookies();
-  const tz = cookieStore.get("tz")?.value || "UTC";
-  const today = dateStringInTz(new Date(), tz);
+  const rawTz = cookieStore.get("tz")?.value;
+  // Whether the server already knows a valid viewer timezone. `rawTz` is a
+  // user-settable cookie, so validate it — an invalid zone would otherwise
+  // throw RangeError out of every Intl call below. Until it's resolved we skip
+  // the calendar fetch and let <TimezoneSync> report the real zone, so the day
+  // is fetched once (for the right day) instead of once for UTC then again.
+  const tzResolved = !!rawTz && isValidTimeZone(rawTz);
+  const tz = tzResolved ? (rawTz as string) : "UTC";
 
+  if (!tzResolved) {
+    return (
+      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
+        <TimezoneSync current={tz} resolved={false} />
+        <p className="mt-4 text-sm text-neutral-500">Loading your day…</p>
+      </main>
+    );
+  }
+
+  const today = dateStringInTz(new Date(), tz);
   const { date: dateParam } = await searchParams;
   const date = /^\d{4}-\d{2}-\d{2}$/.test(dateParam ?? "")
     ? (dateParam as string)
     : today;
+  const dayWindow = zonedDayRange(date, tz);
 
   // The Google refresh token (missing for anyone who signed in before this
   // feature shipped) and the day's done rows.
@@ -55,16 +72,19 @@ export default async function Home({
 
   if (cred?.refresh_token) {
     try {
-      const { start, end } = zonedDayRange(date, tz);
-      const events = await listCalendarEvents(cred.refresh_token, start, end);
-      items = reconstructDay(events, logs, new Date());
+      const events = await listCalendarEvents(
+        cred.refresh_token,
+        dayWindow.start,
+        dayWindow.end,
+      );
+      items = reconstructDay(events, logs, new Date(), dayWindow);
     } catch (e) {
       if (e instanceof GoogleAuthExpiredError) needsReconnect = true;
       else loadError = e instanceof Error ? e.message : "Failed to load calendar.";
     }
   } else if (logs.length) {
     // No calendar access, but recorded done rows can still show.
-    items = reconstructDay([], logs, new Date());
+    items = reconstructDay([], logs, new Date(), dayWindow);
   }
 
   const dateLabel = new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", {
@@ -76,7 +96,7 @@ export default async function Home({
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
-      <TimezoneSync current={tz} />
+      <TimezoneSync current={tz} resolved />
 
       <header className="flex items-center justify-between">
         <div>

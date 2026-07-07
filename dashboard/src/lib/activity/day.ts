@@ -13,6 +13,9 @@ export type DayItem = {
   status: DayStatus;
 };
 
+/** UTC [start, end) instants bounding the day being reconstructed. */
+export type DayWindow = { start: Date; end: Date };
+
 /**
  * Reconstruct a day's outcomes by joining live calendar events with the ledger.
  * The ledger holds only `done=true` rows, so status falls out of three cases:
@@ -20,13 +23,20 @@ export type DayItem = {
  *   - no row, event already ended  → not_done  (the reconstruction the app punts to web)
  *   - no row, event still to come  → upcoming
  *
- * All-day events are skipped — the tracker only covers timed events, matching
- * the mobile app. `logs` must already be scoped to this day (occurred_on).
+ * An event belongs to the day it **starts** — matching the mobile app, which
+ * writes `occurred_on` as the event's local start date. Google's events.list
+ * returns everything that *overlaps* the window, so a cross-midnight event comes
+ * back on both days; filtering by start keeps it on its start day only (no
+ * phantom "Missed" duplicate on the other day). `window` is that day's range;
+ * `logs` must already be scoped to this day (occurred_on).
+ *
+ * All-day events are skipped — the tracker only covers timed events.
  */
 export function reconstructDay(
   events: GcalEvent[],
   logs: ActivityLog[],
   now: Date,
+  window: DayWindow,
 ): DayItem[] {
   const doneById = new Map(
     logs.filter((l) => l.done).map((l) => [l.gcal_event_id, l]),
@@ -38,6 +48,13 @@ export function reconstructDay(
     const start = ev.start?.dateTime;
     const end = ev.end?.dateTime;
     if (!ev.id || !start || !end) continue; // all-day / malformed → skip
+
+    // Keep only events that start within this day (Google also returns events
+    // that merely overlap the window from an earlier day).
+    const startMs = new Date(start).getTime();
+    if (startMs < window.start.getTime() || startMs >= window.end.getTime()) {
+      continue;
+    }
     seen.add(ev.id);
 
     const log = doneById.get(ev.id);
