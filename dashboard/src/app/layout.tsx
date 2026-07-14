@@ -1,18 +1,27 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Providers } from "./providers";
 
-// Inter is the target's real face (SIL OFL, so it ships as-is). Its mono is Paper Mono —
-// proprietary to Cloudflare and never bundled; JetBrains Mono is the open stand-in.
-const inter = Inter({
+// Self-hosted, not next/font/google. That variant fetches from Google AT BUILD TIME, so the
+// build fails outright whenever fonts.googleapis.com is unreachable — a network dependency in
+// a step that should be deterministic. Both faces are SIL OFL, so vendoring the latin subsets
+// is free and legal.
+//
+// Inter is the target's real face. Cloudflare's mono is Paper Mono, which is proprietary and
+// is never bundled; JetBrains Mono is the open stand-in.
+const inter = localFont({
+  src: "../fonts/Inter-latin.woff2",
   variable: "--font-inter",
-  subsets: ["latin"],
+  weight: "100 900",
+  display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: "../fonts/JetBrainsMono-latin.woff2",
   variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
+  weight: "100 800",
+  display: "swap",
 });
 
 export const metadata: Metadata = {

@@ -8,20 +8,13 @@ import { ThemeToggle } from "./theme-toggle";
 // falls back to its intrinsic 300x150 and overflows the box, so size every glyph explicitly.
 const ICON = { width: 16, height: 16, viewBox: "0 0 16 16", fill: "none" } as const;
 
+// Day / Week / Month is a ZOOM level, not a destination — it lives in the header as a
+// segmented control (see review-nav.tsx). The rail is for actual places.
 const NAV = [
   {
     href: "/",
-    label: "Day",
-    icon: (
-      <svg {...ICON} aria-hidden>
-        <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
-        <path d="M2 6.5h12M5.5 2v2M10.5 2v2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    href: "/week",
-    label: "Week",
+    match: ["/", "/week", "/month"],
+    label: "Review",
     icon: (
       <svg {...ICON} aria-hidden>
         <path d="M2.5 12.5V9.5M6.5 12.5V5.5M10.5 12.5V7.5M14 12.5V3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -76,8 +69,7 @@ export function AppShell({
               </div>
               <ul className="ds-sidebar__menu flex flex-col gap-0.5">
                 {NAV.map((item) => {
-                  const active =
-                    item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                  const active = item.match.includes(pathname);
                   return (
                     <li key={item.href} className="ds-sidebar__menu-item">
                       <Link

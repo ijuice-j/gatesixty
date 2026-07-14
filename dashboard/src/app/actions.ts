@@ -57,5 +57,9 @@ export async function toggleDone(formData: FormData) {
     if (error) throw new Error(`Could not un-mark: ${error.message}`);
   }
 
+  // All three zoom levels reconstruct from the same ledger, so a backfill on the day
+  // view moves the week grid and the month heatmap too.
   revalidatePath("/");
+  revalidatePath("/week");
+  revalidatePath("/month");
 }

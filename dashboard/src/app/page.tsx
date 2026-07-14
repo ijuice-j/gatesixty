@@ -3,15 +3,22 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { listCalendarEvents, GoogleAuthExpiredError } from "@/lib/google/calendar";
-import { reconstructDay, type DayItem, type DayStatus } from "@/lib/activity/day";
-import { zonedDayRange, dateStringInTz, shiftDate, resolveViewerTimeZone } from "@/lib/time";
+import { reconstructRange, dateRange, type ReconstructedDay } from "@/lib/activity/range";
+import { followThrough, totalFollowThrough } from "@/lib/activity/metrics";
+import { dateStringInTz, shiftDate, zonedDayStart, resolveViewerTimeZone } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "./timezone-sync";
 import { AppShell } from "./shell";
-import { toggleDone } from "./actions";
+import { ZoomNav } from "./review-nav";
+import { MetricHeader } from "./metric-header";
+import { DayList } from "./day-list";
+import { ReconnectBanner, LoadErrorBanner } from "./banners";
 
 // Reconstruction reads the live calendar per request — never cache.
 export const dynamic = "force-dynamic";
+
+/** The day, plus the 6 before it — so "vs your average" is your OWN average. */
+const TRAILING = 7;
 
 export default async function Home({
   searchParams,
@@ -25,20 +32,17 @@ export default async function Home({
   if (!user) redirect("/login");
 
   const cookieStore = await cookies();
-  // `rawTz` is a user-settable cookie; resolveViewerTimeZone validates it (an
-  // invalid zone would otherwise throw RangeError out of every Intl call). Until
-  // it's resolved we skip the calendar fetch and let <TimezoneSync> report the
-  // real zone, so the day is fetched once (for the right day) not twice.
-  const { tz, resolved: tzResolved } = resolveViewerTimeZone(
-    cookieStore.get("tz")?.value,
-  );
+  // An invalid tz would throw RangeError out of every Intl call, so until it's
+  // resolved we skip the fetch and let <TimezoneSync> report the real zone —
+  // the day is then fetched once, for the right day, instead of twice.
+  const { tz, resolved } = resolveViewerTimeZone(cookieStore.get("tz")?.value);
 
-  if (!tzResolved) {
+  if (!resolved) {
     return (
-      <AppShell email={user.email} title="Activity">
-        <div className="mx-auto w-full max-w-3xl px-6 py-8">
+      <AppShell email={user.email} title="Review">
+        <div className="w-full max-w-5xl px-6 py-6">
           <TimezoneSync current={tz} resolved={false} />
-          <p className="text-sm text-[var(--text-color-kumo-subtle)]">Loading your day…</p>
+          <p className="text-base text-[var(--text-color-kumo-subtle)]">Loading your day…</p>
         </div>
       </AppShell>
     );
@@ -49,10 +53,13 @@ export default async function Home({
   const date = /^\d{4}-\d{2}-\d{2}$/.test(dateParam ?? "")
     ? (dateParam as string)
     : today;
-  const dayWindow = zonedDayRange(date, tz);
 
-  // The Google refresh token (missing for anyone who signed in before this
-  // feature shipped) and the day's done rows.
+  // One Google call for the whole trailing window, then slice it per day.
+  const from = shiftDate(date, -(TRAILING - 1));
+  const dates = dateRange(from, TRAILING);
+  const windowStart = zonedDayStart(from, tz);
+  const windowEnd = zonedDayStart(shiftDate(date, 1), tz);
+
   const [{ data: cred }, { data: logData }] = await Promise.all([
     supabase
       .from("google_credentials")
@@ -64,52 +71,46 @@ export default async function Home({
       .select(
         "gcal_event_id, title, done, occurred_on, planned_start, planned_end, color, ended_at",
       )
-      .eq("occurred_on", date),
+      .gte("occurred_on", from)
+      .lte("occurred_on", date),
   ]);
   const logs = (logData ?? []) as ActivityLog[];
 
-  let items: DayItem[] = [];
+  let days: ReconstructedDay[] = [];
   let needsReconnect = !cred?.refresh_token;
   let loadError: string | null = null;
 
   if (cred?.refresh_token) {
     try {
-      const events = await listCalendarEvents(
-        cred.refresh_token,
-        dayWindow.start,
-        dayWindow.end,
-      );
-      items = reconstructDay(events, logs, new Date(), dayWindow);
+      const events = await listCalendarEvents(cred.refresh_token, windowStart, windowEnd);
+      days = reconstructRange(events, logs, new Date(), dates, tz);
     } catch (e) {
       if (e instanceof GoogleAuthExpiredError) needsReconnect = true;
       else loadError = e instanceof Error ? e.message : "Failed to load calendar.";
     }
   } else if (logs.length) {
-    // No calendar access, but recorded done rows can still show.
-    items = reconstructDay([], logs, new Date(), dayWindow);
+    // No calendar access, but recorded rows can still show.
+    days = reconstructRange([], logs, new Date(), dates, tz);
   }
+
+  const items = days.find((d) => d.date === date)?.items ?? [];
+  const ft = followThrough(items);
+
+  // "Your average" is the other six days — comparing today with itself is no
+  // comparison at all. Days with nothing blocked contribute nothing, so a rest
+  // day can't drag the baseline down.
+  const priorDays = days.filter((d) => d.date !== date).map((d) => followThrough(d.items));
+  const prior = totalFollowThrough(priorDays);
 
   const dateLabel = new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", {
     weekday: "short",
-    month: "short",
     day: "numeric",
+    month: "short",
     timeZone: "UTC",
   });
 
-  const done = items.filter((i) => i.status === "done").length;
-
   return (
-    <AppShell
-      email={user.email}
-      title="Activity"
-      actions={
-        items.length > 0 ? (
-          <span className="ds-badge ds-badge--subtle ds-badge--neutral tabular-nums">
-            {done}/{items.length} done
-          </span>
-        ) : undefined
-      }
-    >
+    <AppShell email={user.email} title="Review" actions={<ZoomNav date={date} />}>
       <div className="w-full max-w-5xl px-6 py-6">
         <TimezoneSync current={tz} resolved />
 
@@ -136,126 +137,20 @@ export default async function Home({
           )}
         </div>
 
-        {needsReconnect && (
-          <div className="ds-banner ds-banner--warning mb-4">
-            <div className="ds-banner__content">
-              Reconnect Google to reconstruct this day.
-            </div>
-            <div className="ds-banner__actions">
-              <form action="/auth/signout" method="post">
-                <button className="ds-btn ds-btn--outline ds-btn--sm" type="submit">
-                  Reconnect
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
+        <MetricHeader
+          label={`Follow-through · ${dateLabel}`}
+          ft={ft}
+          compare={prior.ratio !== null ? prior : undefined}
+          compareLabel="your 6-day average"
+        />
 
-        {loadError && (
-          <div className="ds-banner ds-banner--danger mb-4">
-            <div className="ds-banner__content">Failed to load activity: {loadError}</div>
-          </div>
-        )}
+        {needsReconnect && <ReconnectBanner what="this day" />}
+        {loadError && <LoadErrorBanner message={loadError} />}
 
-        {!needsReconnect && !loadError && items.length === 0 && (
-          <div className="ds-card ds-card--bordered">
-            <p className="text-base text-[var(--text-color-kumo-subtle)]">
-              No timed events on this day.
-            </p>
-          </div>
-        )}
-
-        {/* One bordered panel, hairline-separated rows — the target's list pattern.
-            p-0 beats the recipe's p-6 because the recipes sit in @layer components. */}
-        {items.length > 0 && (
-          <div className="ds-card ds-card--bordered gap-0 overflow-hidden p-0">
-            <ul className="divide-y divide-[var(--color-kumo-line)]">
-              {items.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex h-12 flex-row items-center gap-3 px-4 hover:bg-[var(--color-kumo-fill-hover)]"
-                >
-                  <span
-                    className="size-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-base font-medium">
-                    {item.title}
-                  </span>
-                  <span className="shrink-0 text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
-                    {formatWindow(item.start, item.end, tz)}
-                  </span>
-                  <StatusControl item={item} date={date} />
-                </li>
-              ))}
-            </ul>
-          </div>
+        {!needsReconnect && !loadError && (
+          <DayList items={items} date={date} tz={tz} />
         )}
       </div>
     </AppShell>
   );
-}
-
-// Outcome → the badge intent that carries it. `not_done` is a warning, not a danger: a missed
-// event is a fact to notice, not an error to alarm about.
-//
-// success/warning `--subtle` resolve to real tint fills. neutral's tint is deliberately
-// color-mix(… 15%, transparent) — near-invisible on the dark canvas, which reads as unfinished
-// beside two solid pills. `--outline` keeps "upcoming" low-emphasis but still a pill.
-const STATUS_BADGE: Record<DayStatus, string> = {
-  done: "ds-badge--subtle ds-badge--success",
-  not_done: "ds-badge--subtle ds-badge--warning",
-  upcoming: "ds-badge--outline",
-};
-const STATUS_LABEL: Record<DayStatus, string> = {
-  done: "Done",
-  not_done: "Missed",
-  upcoming: "Upcoming",
-};
-
-/**
- * The status pill. For past events (done / not_done) it's a toggle button that
- * backfills or clears the ledger row; upcoming events have no outcome yet, so
- * they render as a static pill.
- */
-function StatusControl({ item, date }: { item: DayItem; date: string }) {
-  if (item.status === "upcoming") {
-    return (
-      <span className={`ds-badge w-24 shrink-0 justify-center ${STATUS_BADGE.upcoming}`}>
-        {STATUS_LABEL.upcoming}
-      </span>
-    );
-  }
-
-  const makeDone = item.status !== "done"; // clicking flips the outcome
-  return (
-    <form action={toggleDone} className="shrink-0">
-      <input type="hidden" name="gcal_event_id" value={item.id} />
-      <input type="hidden" name="occurred_on" value={date} />
-      <input type="hidden" name="make_done" value={String(makeDone)} />
-      <input type="hidden" name="title" value={item.title} />
-      <input type="hidden" name="planned_start" value={item.start ?? ""} />
-      <input type="hidden" name="planned_end" value={item.end ?? ""} />
-      <input type="hidden" name="color" value={item.color} />
-      <button
-        type="submit"
-        aria-label={makeDone ? "Mark done" : "Mark not done"}
-        title={makeDone ? "Mark done" : "Mark not done"}
-        className={`ds-badge w-24 cursor-pointer justify-center ${STATUS_BADGE[item.status]}`}
-      >
-        {STATUS_LABEL[item.status]}
-      </button>
-    </form>
-  );
-}
-
-function formatWindow(start: string | null, end: string | null, tz: string) {
-  if (!start || !end) return "—";
-  const fmt = (s: string) =>
-    new Date(s).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: tz,
-    });
-  return `${fmt(start)} – ${fmt(end)}`;
 }
