@@ -1,0 +1,351 @@
+/* =============================================================================
+ * cloudflare-dashboard design system — TOKEN ENTRY POINT
+ * -----------------------------------------------------------------------------
+ * Import this file (or, more usually, the package root `../index.css`) to get
+ * the complete token layer:
+ *
+ *   1. ./colors.css      semantic color tokens, per theme
+ *   2. ./typography.css  --font-* role tokens (open-licensed faces)
+ *   3. (this file) primitives the recipes depend on + a Tailwind v4 bridge
+ *
+ * THEME SWITCHING
+ *   Every semantic token is redeclared under the theme selectors, so you never
+ *   write a per-theme value yourself — you just use the var:
+ *
+ *     :root            → light   (default)
+ *     [data-mode=dark] → dark
+ *     .theme-kumo      → dark-equivalent "kumo" surface set
+ *     .theme-fedramp   → FedRAMP surface overrides (3 tokens only)
+ *
+ * NAMING
+ *   namingStrategy = preserve. Token names are the target's own names, verbatim
+ *   (`--color-kumo-*`, `--text-color-kumo-*`). Do not rename them — the
+ *   component recipes in ../components/*.css reference these exact names.
+ * ========================================================================== */
+
+@import "./colors.css";
+@import "./typography.css";
+
+/* NOTE: there is no ./spacing.css, ./elevation.css or ./motion.css
+ * in this extraction — the target compiles those to utilities rather than to
+ * named tokens (../../capture/classification.json verdict: "utility-compiled").
+ * The spacing / radius / type / motion / z-index primitives therefore live in the
+ * block below, transcribed verbatim from the primitive scale captured in
+ * ./colors.css. Their design rationale is documented in
+ * ../foundations/spacing-layout.md and ../foundations/elevation-motion.md. */
+
+
+/* =============================================================================
+ * PRIMITIVE SCALE  (promoted to :root)
+ * -----------------------------------------------------------------------------
+ * WHY THIS BLOCK EXISTS
+ *   Historical note: an earlier extractor run parked the primitive scale under a
+ *   `.theme-unknown` selector, which matched no element. That bug is FIXED — ./colors.css
+ *   now emits the scale directly at `:root` (--spacing, --radius-*, --text-*, --z-index-*,
+ *   --ease-* are all there), and its only top-level selectors are :root, [data-mode=dark],
+ *   .theme-fedramp and .theme-kumo. No promotion step is needed.
+ *
+ *   This block is therefore a PINNING layer, not a rescue: it re-states the handful of
+ *   primitives the recipes name without a fallback, and remaps the shadcn contract
+ *   (--color-primary, --color-border, …) onto the kumo semantic tokens so they theme.
+ *   Do NOT pin a token here that themes — this file is @import-ed AFTER colors.css at equal
+ *   specificity, so a re-declaration at :root overrides BOTH the light and dark blocks.
+ *   The semantic color tokens survive regardless (they each carry an inline fallback:
+ *   `var(--color-neutral-200, oklch(...))`),
+ *   but the layout/type/motion primitives do NOT. The component recipes reference
+ *   `var(--radius-lg)`, `var(--spacing)`, `var(--text-base)`, `var(--cf-blue-5)`
+ *   and friends with no fallback, so those names must resolve at :root.
+ *
+ *   Values below are transcribed EXACTLY from ./colors.css `:root`.
+ *   Nothing here is invented, rounded, or re-derived.
+ *
+ * TAILWIND v4 COLLISION — READ THIS
+ *   These names deliberately collide with Tailwind's own theme namespace
+ *   (--spacing, --radius-*, --text-*, --leading-*, --font-weight-*, --ease-*,
+ *   --container-*, --blur-*). That is the point: the target IS a Tailwind app, so
+ *   overriding these makes `text-sm`, `rounded-lg`, `p-4` etc. render at the
+ *   target's real values (e.g. text-sm = 13px, not Tailwind's default 0.875rem).
+ *   Tailwind emits its defaults inside `@layer theme`; this block is unlayered,
+ *   so it wins cleanly and predictably. If you do NOT want that, import only
+ *   ./colors.css + ./typography.css and supply primitives yourself.
+ * ========================================================================== */
+
+:root {
+  /* --- Spacing base -------------------------------------------------------
+   * The whole spacing scale is calc(var(--spacing) * n) — `p-4` = 1rem, etc. */
+  --spacing: .25rem;
+
+  /* --- Radius -------------------------------------------------------------
+   * Dominant radius in the target is `rounded-lg` (946 uses vs 21 for
+   * `rounded-md`), so --radius-lg is the house radius for cards, controls,
+   * menus and fields. `rounded-full` (162 uses) is pills/avatars only. */
+  --radius-xs: .125rem;
+  --radius-sm: .25rem;
+  --radius-md: .375rem;
+  --radius-lg: .5rem;
+  --radius-xl: .75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+
+  /* --- Type scale ---------------------------------------------------------
+   * Note the target RESIZES Tailwind's bottom four steps to px values:
+   * text-sm is 13px and text-base is 14px — a denser, dashboard-grade scale.
+   * text-sm is the workhorse (914 uses); text-base is second (101). */
+  --text-xs: 12px;
+  --text-xs--line-height: calc(1 / .75);
+  --text-sm: 13px;
+  --text-sm--line-height: calc(1 / .85);
+  --text-base: 14px;
+  --text-base--line-height: calc(1.25 / .875);
+  --text-lg: 16px;
+  --text-lg--line-height: calc(1.25 / 1);
+  --text-xl: 1.25rem;
+  --text-xl--line-height: calc(1.75 / 1.25);
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: calc(2 / 1.5);
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: calc(2.25 / 1.875);
+  --text-4xl: 2.25rem;
+  --text-4xl--line-height: calc(2.5 / 2.25);
+  --text-5xl: 3rem;
+  --text-5xl--line-height: 1;
+
+  /* --- Line height / tracking / weight ------------------------------------ */
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+
+  --tracking-tight: -.025em;
+  --tracking-normal: 0em;
+  --tracking-wide: .025em;
+  --tracking-wider: .05em;
+  --tracking-widest: .1em;
+
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Body default the target sets on :root — 1.5 leading and a slight negative
+   * tracking, on top of the normal (400) body weight. --tw-font-weight is the
+   * inherited Tailwind body-weight slot, so it must stay at 400: see
+   * ../foundations/typography.md. (--font-weight-light / 300 is defined but
+   * unusable at the 12–13px sizes this system runs at — do not point the body
+   * slot at it.) */
+  --tw-font-weight: var(--font-weight-normal);
+  --tw-leading: 1.5;
+  --tw-tracking: -.01em;
+
+  /* --- Motion -------------------------------------------------------------
+   * The target's default transition is a very fast 100ms — snappier than
+   * Tailwind's 150ms default. Observed durations cluster at .2s (67 rules) and
+   * .1s (41 rules); the dominant easing is plain `ease` (304 rules). */
+  --default-transition-duration: .1s;
+  --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, .2, 1);
+  --ease-in-out: cubic-bezier(.4, 0, .2, 1);
+
+  --animate-spin: spin 1s linear infinite;
+  --animate-ping: ping 1s cubic-bezier(0, 0, .2, 1) infinite;
+  --animate-pulse: pulse 2s cubic-bezier(.4, 0, .6, 1) infinite;
+  --animate-refresh: refresh .5s ease-in-out infinite;
+
+  /* --- Layout shell -------------------------------------------------------
+   * Real fixed dimensions of the app chrome. --sidebar-nav-width is written to
+   * <html> by the target's JS as the rail animates; the recipes read it and fall
+   * back to the collapsed width. */
+  --header-height: 58px;
+  --sidebar-nav-width: 260px;
+
+  /* Content width caps used by dialogs, forms and prose blocks. */
+  --container-3xs: 16rem;
+  --container-2xs: 18rem;
+  --container-xs: 20rem;
+  --container-sm: 24rem;
+  --container-md: 28rem;
+  --container-lg: 32rem;
+  --container-xl: 36rem;
+  --container-2xl: 42rem;
+  --container-3xl: 48rem;
+  --container-4xl: 56rem;
+  --container-5xl: 64rem;
+  --container-6xl: 72rem;
+  --container-7xl: 80rem;
+
+  --breakpoint-2xl: 96rem;
+
+  /* --- Elevation / effects ------------------------------------------------
+   * Shadows in this system are COLOR tokens (--color-kumo-shadow-drop /
+   * --color-kumo-shadow-edge in ./colors.css) composed by the recipes; only the
+   * blur ramp and one drop-shadow survived as scalar primitives. */
+  --blur-xs: 4px;
+  --blur-sm: 8px;
+  --blur-md: 12px;
+  --blur-xl: 24px;
+  --drop-shadow-sm: 0 1px 2px #00000026;
+  --aspect-video: 16 / 9;
+
+  /* --- Stacking order ----------------------------------------------------- */
+  --z-index-modal: 9999;
+  --z-index-drawer: 99999;
+  --z-index-toast: 1000000;
+
+  /* --- Runtime-written scroll/fade channels --------------------------------
+   * The scroll-area and edge-fade recipes read these; the target's JS writes
+   * them. Zero = no overflow / no fade, which is the correct static default. */
+  --scroll-area-overflow-x-start: 0px;
+  --scroll-area-overflow-x-end: 0px;
+  --scroll-area-overflow-y-start: 0px;
+  --scroll-area-overflow-y-end: 0px;
+  --fade-left-n: 0;
+  --fade-right-n: 0;
+
+  /* --- Primitives referenced directly by the recipes -----------------------
+   * The full neutral / blue / red / emerald / … ramps are in ./colors.css; only
+   * the handful the recipes name without a fallback are promoted here. */
+  --color-white: #fff;
+  --color-black: #000;
+  --color-neutral-950: oklch(14.5% 0 0);
+  /* --color-tooltip-border is deliberately NOT pinned here — it THEMES. colors.css defines it
+   * per theme (:root = oklch(92.8% .006 264.531), [data-mode=dark] = oklch(26.9% 0 0)).
+   * Re-declaring it at :root in this file has equal specificity but LATER source order than the
+   * colors.css imported above, so it would override BOTH blocks and freeze the token dark in
+   * every theme — light-mode tooltip/popover/toast outlines would render near-black. */
+
+  /* --- Chart / data-viz ramp (--cf-*) --------------------------------------
+   * ../../capture/charts-data.json found no dedicated chart tokens; the
+   * data-display recipes therefore pull series-color off the target's --cf-*
+   * brand ramp. Step 5 is the light-theme ink, step 6 the dark-theme ink of the
+   * same hue. */
+  --cf-blue-5: #086fff;
+  --cf-blue-6: #4693ff;
+  --cf-cyan-5: #1e89a5;
+  --cf-cyan-6: #30b6da;
+  --cf-gold-5: #a77a00;
+  --cf-gold-6: #dda100;
+  --cf-green-5: #228b49;
+  --cf-green-6: #2db35e;
+  --cf-red-5: #e81403;
+  --cf-red-6: #fc574a;
+  --cf-violet-5: #b73cdf;
+  --cf-violet-6: #cf7ee9;
+  --cf-gray-0: #0a0a0a;
+  --cf-gray-4: #595959;
+  --cf-gray-8: #d9d9d9;
+  --cf-gray-9: #f2f2f2;
+}
+
+/* Backing keyframes for --animate-spin (used by the button/skeleton spinners).
+ * GLUE: the target's keyframe body was not part of the capture — this is the
+ * standard 0→360° rotation. Everything else the recipes animate is defined as a
+ * `ds-*` keyframe inside the component files themselves. */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+
+/* =============================================================================
+ * FRAMEWORK BRIDGE — Tailwind CSS v4 + shadcn/ui
+ * -----------------------------------------------------------------------------
+ * Maps the shadcn/ui token contract onto the closest extracted token. `inline`
+ * is load-bearing: it makes Tailwind emit `background-color: var(--color-kumo-canvas)`
+ * into the utility rather than snapshotting a value, so switching the theme
+ * selector at runtime re-themes every shadcn component with no rebuild.
+ *
+ * ADOPTING: delete the `:root { --background: … }` / `.dark { … }` palette AND
+ * the `@theme inline { --color-*: var(--*) }` block that `npx shadcn init`
+ * generated in your globals.css, then import this package. Leaving both in place
+ * means whichever is imported last wins — confusing, not fatal.
+ *
+ * Non-obvious mappings, called out honestly:
+ *   • primary        → --color-kumo-brand. This is the BLUE action color
+ *                      (oklch 57.72% .2324 260) used by the emphasis button.
+ *                      The famous Cloudflare orange (#f6821f) is a *text-only*
+ *                      token, --text-color-kumo-brand. Do not swap them.
+ *   • ring           → --color-kumo-focus, which is NEUTRAL (near-black in
+ *                      light, near-white in dark), not brand-tinted. Focus rings
+ *                      in this system are achromatic by design.
+ *   • secondary      → --color-kumo-tint. The target's real secondary button is
+ *                      --color-kumo-base + a --color-kumo-line hairline ring;
+ *                      shadcn's `secondary` variant paints a fill with no
+ *                      border, so `base` would render invisible on a card. Use
+ *                      the `.ds-btn--secondary` recipe for exact parity.
+ *   • popover/card   → --color-kumo-base (menus and cards share the base
+ *                      surface; --color-kumo-elevated is the raised variant).
+ *   • border + input → --color-kumo-line (54 uses across the recipes;
+ *                      --color-kumo-hairline is a rarely-used sibling).
+ * ========================================================================== */
+
+@theme inline {
+  /* Surfaces */
+  --color-background: var(--color-kumo-canvas);
+  --color-foreground: var(--text-color-kumo-default);
+  --color-card: var(--color-kumo-base);
+  --color-card-foreground: var(--text-color-kumo-default);
+  --color-popover: var(--color-kumo-base);
+  --color-popover-foreground: var(--text-color-kumo-default);
+
+  /* Actions */
+  --color-primary: var(--color-kumo-brand);
+  --color-primary-foreground: var(--color-white);
+  --color-secondary: var(--color-kumo-tint);
+  --color-secondary-foreground: var(--text-color-kumo-default);
+  --color-accent: var(--color-kumo-tint);
+  --color-accent-foreground: var(--text-color-kumo-strong);
+  --color-destructive: var(--color-kumo-danger);
+  --color-destructive-foreground: var(--color-white);
+
+  /* Quiet copy + sunken surfaces */
+  --color-muted: var(--color-kumo-recessed);
+  --color-muted-foreground: var(--text-color-kumo-subtle);
+
+  /* Lines + focus */
+  --color-border: var(--color-kumo-line);
+  --color-input: var(--color-kumo-line);
+  --color-ring: var(--color-kumo-focus);
+
+  /* Sidebar family — matches the --sidebar-bg / --sidebar-active-bg pair the
+   * navigation recipe resolves for the expanded rail. */
+  --color-sidebar: var(--color-kumo-base);
+  --color-sidebar-foreground: var(--text-color-kumo-default);
+  --color-sidebar-primary: var(--color-kumo-brand);
+  --color-sidebar-primary-foreground: var(--color-white);
+  --color-sidebar-accent: var(--color-kumo-tint);
+  --color-sidebar-accent-foreground: var(--text-color-kumo-strong);
+  --color-sidebar-border: var(--color-kumo-line);
+  --color-sidebar-ring: var(--color-kumo-focus);
+
+  /* Status colors, for chart/badge/alert consumers that want them namespaced. */
+  --color-success: var(--color-kumo-success);
+  --color-warning: var(--color-kumo-warning);
+  --color-info: var(--color-kumo-info);
+
+  /* shadcn's single --radius knob, pointed at the house radius (rounded-lg).
+   * IMPORTANT: also delete the four
+   *   --radius-sm: calc(var(--radius) - 4px);  (…-md, -lg, -xl)
+   * lines from your shadcn globals.css. They inline a calc() into every
+   * `rounded-*` utility and would shadow the real radius ramp above. */
+  --radius: var(--radius-lg);
+}
+
+/* --- Fonts ------------------------------------------------------------------
+ * The three role tokens (--font-sans, --font-mono, --font-heading) are declared
+ * at :root by ./typography.css, and Tailwind's `font-sans` / `font-mono`
+ * utilities already compile to `font-family: var(--font-sans|--font-mono)`. So
+ * those two are wired up with zero extra configuration — an unlayered :root
+ * declaration outranks Tailwind's `@layer theme` default.
+ *
+ * They are deliberately NOT re-declared inside `@theme inline` above: mapping
+ * `--font-sans: var(--font-sans)` onto itself is a circular custom-property
+ * reference and would make the token compute to nothing.
+ *
+ * --font-heading has no Tailwind namespace of its own, so it gets an explicit
+ * utility. Swap fonts by editing the stacks in ./typography.css — see
+ * ../foundations/fonts.md. */
+@utility font-heading {
+  font-family: var(--font-heading);
+}

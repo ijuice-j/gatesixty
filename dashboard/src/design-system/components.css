@@ -1,0 +1,37 @@
+/* =============================================================================
+ * cloudflare-dashboard design system — COMPONENT RECIPES
+ * -----------------------------------------------------------------------------
+ * Every recipe is scoped under `.ds` and references the token layer via
+ * var(--…). Import tokens/index.css (or the package root ../index.css) FIRST —
+ * these files declare no values of their own.
+ *
+ * Each .css file has a matching .md in components/ documenting anatomy, every
+ * variant, sizes, states, a11y notes, do/don't, and the shadcn/ui mapping.
+ *
+ * Load order is alphabetical except that `buttons` comes early: several later
+ * files (menus, forms, feedback) reuse the --ds-btn-* control geometry.
+ * ========================================================================== */
+
+/* Controls — the button box, its 5 variants and 3 sizes (h-8 / h-9 / h-10). */
+@import "./components/buttons.css";
+
+/* Text fields, checkboxes, labels, help/error text, field groups. */
+@import "./components/forms.css";
+
+/* Dropdown menus, comboboxes, account/zone switchers, menu triggers. */
+@import "./components/menus-dropdowns.css";
+
+/* Tabs, segmented controls, the sliding active-tab indicator. */
+@import "./components/tabs-segmented.css";
+
+/* Badges, pills, status dots, health/state indicators. */
+@import "./components/badges-status.css";
+
+/* Cards, surfaces, tables, stat tiles, charts, skeletons, empty states. */
+@import "./components/data-display.css";
+
+/* App shell: header, sidebar rail, breadcrumbs, pagination, links. */
+@import "./components/navigation.css";
+
+/* Dialogs, drawers, popovers, tooltips, toasts, banners, progress. */
+@import "./components/feedback-overlays.css";

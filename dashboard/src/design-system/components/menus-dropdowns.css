@@ -1,0 +1,709 @@
+/* =============================================================================
+ * cloudflare-dashboard — MENUS & DROPDOWNS
+ * Popover menus, menu items, groups, separators, keyboard hints, switchers.
+ *
+ * SOURCE OF TRUTH
+ *   Target classification = "utility-compiled" (classification.json). Named
+ *   classes do NOT carry the values — atomic utilities do. Every declaration
+ *   below was transcribed from the rendered DOM (capture/*.html) and resolved
+ *   through the token layer in tokens/colors.css. Nothing here is hand-picked.
+ *
+ * WHAT WAS OBSERVED vs. RECONSTRUCTED
+ *   OBSERVED  — menu items, groups, group labels, separators, sub-menus,
+ *               keyboard hints, and every menu/select/switcher TRIGGER.
+ *               (data-kumo-part="menu-button" | "menu-sub-button" |
+ *                "menu-button-link" | "menu-sub-button-link" | "trigger")
+ *   RECONSTRUCTED — the floating PANEL box itself. Menus were captured in the
+ *               CLOSED state; Radix/Base UI portal the panel in on open, so it
+ *               never entered the DOM. Panel surface/border/radius/z are built
+ *               from the target's own tokens + its trigger conventions. Panel
+ *               SHADOW GEOMETRY is the one prescriptive guess (see --ds-menu-shadow);
+ *               its COLORS are exact tokens.
+ *
+ * TOKENS USED (all verbatim from tokens/colors.css)
+ *   surface   --color-kumo-base | --color-kumo-elevated | --color-kumo-overlay
+ *   hover/sel --color-kumo-tint (light) / --color-kumo-control (dark)
+ *   hairline  --color-kumo-line
+ *   focus     --color-kumo-brand (ring) / --color-kumo-focus (soft ring)
+ *   shadow    --color-kumo-shadow-drop / --color-kumo-shadow-edge
+ *   text      --text-color-kumo-default | -strong | -subtle | -danger
+ *
+ * Theme switching is automatic: :root / [data-mode=dark] / .theme-kumo /
+ * .theme-fedramp redefine the vars. Never write a per-theme value here.
+ *
+ * Scope: every rule is nested under .ds (scope-components.js enforces this).
+ * ========================================================================== */
+
+/* -----------------------------------------------------------------------------
+ * 0. Local knobs
+ * Mapped 1:1 onto the target's real values. Kept as vars so a consumer can
+ * retune elevation/stacking without touching the token layer.
+ * -------------------------------------------------------------------------- */
+.ds {
+  /* Menu items resolve their hover/selected fill through ONE indirection, exactly
+   * as the target does: the sidebar sets [--sidebar-active-bg:var(--color-kumo-tint)]
+   * and overrides it to --color-kumo-control in dark / --color-kumo-recessed when
+   * inset. We mirror that with --ds-menu-active-bg. */
+  --ds-menu-active-bg: var(--color-kumo-tint);
+
+  /* Panel elevation. COLORS are exact tokens; the offsets/blur are prescriptive
+   * (the open panel was never captured, and no elevation.css exists in this run).
+   * shadow-edge = the 1px hairline; shadow-drop = the cast shadow. */
+  --ds-menu-shadow:
+    0 0 0 1px var(--color-kumo-shadow-edge),
+    0 4px 12px var(--color-kumo-shadow-drop);
+
+  /* Stacking. The target ships NO menu/popover z token — the only z tokens are
+   * --z-index-modal (9999), --z-index-drawer (99999), --z-index-toast (1000000).
+   * Observed z utilities on menu-adjacent chrome top out at z-50. A menu must sit
+   * above page chrome but BELOW a modal, so we park it here and expose the knob. */
+  --ds-menu-z: 50;
+
+  /* Motion. Observed: the menu surfaces animate at 250ms on
+   * cubic-bezier(0.77, 0, 0.175, 1) (--sidebar-animation-duration/--sidebar-easing);
+   * the site-wide dominant pair is .2s / ease. Item color changes use the fast pair. */
+  --ds-menu-duration: 250ms;
+  --ds-menu-easing: cubic-bezier(0.77, 0, 0.175, 1);
+  --ds-menu-item-duration: 0.2s;
+  --ds-menu-item-easing: ease;
+}
+
+/* Dark / kumo themes swap the active fill, matching the target's
+ * dark:[--sidebar-active-bg:var(--color-kumo-control)] override. */
+[data-mode="dark"] .ds,
+.ds[data-mode="dark"],
+.theme-kumo .ds {
+  --ds-menu-active-bg: var(--color-kumo-control);
+}
+
+/* The "inset" surface treatment recesses the active fill instead of tinting it. */
+.ds .ds-menu--inset {
+  --ds-menu-active-bg: var(--color-kumo-recessed);
+}
+
+/* -----------------------------------------------------------------------------
+ * 1. PANEL — the floating menu surface
+ * Anatomy: [trigger] -> [panel > (group > group-label + item*) + separator + ...]
+ * RECONSTRUCTED (see header). Radius/surface/hairline follow the target's
+ * universal control convention: rounded-lg + bg-kumo-base + a --color-kumo-line
+ * hairline, expressed as a ring (the target uses `ring ring-kumo-line`, i.e. a
+ * box-shadow ring, not a border — so it never affects layout).
+ * -------------------------------------------------------------------------- */
+.ds .ds-menu {
+  /* rounded-lg is the target's dominant radius (946 uses vs. 21 for rounded-md) */
+  border-radius: var(--radius-lg);
+  background-color: var(--color-kumo-base);
+  color: var(--text-color-kumo-default);
+
+  /* Hairline + cast shadow. The 1px ring is folded into --ds-menu-shadow so the
+   * panel keeps a single box-shadow stack. */
+  box-shadow: var(--ds-menu-shadow);
+
+  z-index: var(--ds-menu-z);
+
+  /* Vertical rhythm: the target's menu list is `gap-y-px p-0 m-0 list-none`,
+   * with the panel padding supplied by the popover wrapper. --spacing = .25rem,
+   * so calc(var(--spacing) * N) reproduces Tailwind's scale exactly. */
+  margin: 0;
+  padding: calc(var(--spacing) * 1);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;                       /* gap-y-px, observed on <ul data-sidebar="menu"> */
+  list-style: none;
+
+  /* Radix/Base UI publish the trigger width; the target consumes it as a
+   * min-width (the only menu selector that survived into _classes.json:
+   * .min-w-[var(--kumo-dropdown-menu-trigger-width)]). */
+  min-width: var(--kumo-dropdown-menu-trigger-width, auto);
+  max-height: var(--kumo-dropdown-menu-available-height, none);
+  overflow-y: auto;
+
+  /* Typography: menu content is text-sm (13px) — 914 uses, the dominant size. */
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+
+/* Surface variants. All three are real tokens in the target; --color-kumo-base is
+ * the default control surface, the other two are the raised/overlay surfaces. */
+.ds .ds-menu--elevated { background-color: var(--color-kumo-elevated); }
+.ds .ds-menu--overlay  { background-color: var(--color-kumo-overlay); }
+
+/* Open/close animation. `fadeSlideIn` is an OBSERVED keyframe name in the target
+ * (motion-data.json: animates opacity + transform) — reused here verbatim. */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ds .ds-menu[data-state="open"] {
+  animation: fadeSlideIn var(--ds-menu-duration) var(--ds-menu-easing);
+}
+
+.ds .ds-menu[data-state="closed"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* -----------------------------------------------------------------------------
+ * 2. ITEM — the interactive row
+ * Transcribed from data-kumo-part="menu-button" / "menu-button-link".
+ * Note the target uses `before:absolute before:inset-x-0 before:-inset-y-px` to
+ * grow the hit target 1px past the row on each axis; reproduced below.
+ * -------------------------------------------------------------------------- */
+.ds .ds-menu__item {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+
+  /* gap-2.5 (10px) on top-level items */
+  gap: calc(var(--spacing) * 2.5);
+
+  /* min-h-8.5 (34px) — the observed menu-item height. Height is a MINIMUM so
+   * two-line items grow instead of clipping. */
+  min-height: calc(var(--spacing) * 8.5);
+  padding: 0 calc(var(--spacing) * 3);   /* px-3 py-0 */
+
+  border-radius: var(--radius-lg);
+  border: 0;
+  background-color: transparent;
+  color: var(--text-color-kumo-default);
+  font: inherit;
+  font-weight: var(--font-weight-medium);   /* font-medium */
+  text-align: left;
+  text-decoration: none;                    /* no-underline! on link items */
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+
+  transition-property: color, background-color, box-shadow, outline;
+  transition-duration: var(--ds-menu-item-duration);
+  transition-timing-function: var(--ds-menu-item-easing);
+}
+
+/* Expanded hit target — matches before:inset-x-0 before:-inset-y-px */
+.ds .ds-menu__item::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block: -1px;
+}
+
+/* --- states ---------------------------------------------------------------- */
+
+/* HOVER — fills with the active bg (tint in light, control in dark). */
+.ds .ds-menu__item:hover {
+  background-color: var(--ds-menu-active-bg);
+}
+
+/* FOCUS-VISIBLE — the target does NOT put a ring on menu items (rings are for
+ * buttons/triggers). It fills the row and strengthens the label instead. Keyboard
+ * focus and hover therefore look identical, which is the intended roving-focus feel. */
+.ds .ds-menu__item:focus-visible {
+  background-color: var(--ds-menu-active-bg);
+  color: var(--text-color-kumo-strong);
+}
+
+/* ACTIVE / PRESSED — settle onto the interact step. */
+.ds .ds-menu__item:active {
+  background-color: var(--color-kumo-interact);
+}
+
+/* SELECTED / CURRENT — the target marks the current row with data-active="true"
+ * and paints it with the same active fill; aria-selected and aria-current are
+ * accepted here as equivalents so the recipe works with any menu primitive. */
+.ds .ds-menu__item[data-active="true"],
+.ds .ds-menu__item[aria-selected="true"],
+.ds .ds-menu__item[aria-current="page"] {
+  background-color: var(--ds-menu-active-bg);
+  color: var(--text-color-kumo-strong);
+}
+
+/* A selected row still deepens on hover (observed:
+ * has-[[data-active]]:hover:bg-(--sidebar-active-bg)). */
+.ds .ds-menu__item[data-active="true"]:hover,
+.ds .ds-menu__item[aria-selected="true"]:hover {
+  background-color: var(--ds-menu-active-bg);
+}
+
+/* OPEN — a sub-menu trigger stays lit while its sub-menu is open
+ * (observed on triggers: data-[state=open]:bg-kumo-base). */
+.ds .ds-menu__item[data-state="open"],
+.ds .ds-menu__item[aria-expanded="true"] {
+  background-color: var(--ds-menu-active-bg);
+}
+
+/* DISABLED — observed convention is disabled:text-kumo-subtle +
+ * disabled:cursor-not-allowed. No fill change; the row simply goes quiet. */
+.ds .ds-menu__item:disabled,
+.ds .ds-menu__item[aria-disabled="true"],
+.ds .ds-menu__item[data-disabled] {
+  color: var(--text-color-kumo-subtle);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Disabled must beat hover/selected — no fill on a dead row. */
+.ds .ds-menu__item:disabled:hover,
+.ds .ds-menu__item[aria-disabled="true"]:hover,
+.ds .ds-menu__item[data-disabled]:hover {
+  background-color: transparent;
+}
+
+/* --- item variants --------------------------------------------------------- */
+
+/* DANGER — destructive rows (Delete, Revoke). Uses the danger text token and the
+ * danger tint as its hover fill. */
+.ds .ds-menu__item--danger {
+  color: var(--text-color-kumo-danger);
+}
+
+.ds .ds-menu__item--danger:hover,
+.ds .ds-menu__item--danger:focus-visible {
+  background-color: var(--color-kumo-danger-tint);
+  color: var(--text-color-kumo-danger);
+}
+
+.ds .ds-menu__item--danger .ds-menu__item-icon {
+  color: var(--text-color-kumo-danger);
+}
+
+/* --- item sizes ------------------------------------------------------------
+ * Grounded in the target's real control-height set: h-8 (32px), the menu-item
+ * min-h-8.5 (34px, the DEFAULT), and h-9 (36px — the most-used trigger height).
+ * -------------------------------------------------------------------------- */
+.ds .ds-menu__item--sm {
+  min-height: calc(var(--spacing) * 8);     /* h-8  — dense menus */
+  gap: calc(var(--spacing) * 2);
+  font-size: var(--text-xs);
+}
+
+.ds .ds-menu__item--md {
+  min-height: calc(var(--spacing) * 8.5);   /* default (observed) */
+}
+
+.ds .ds-menu__item--lg {
+  min-height: calc(var(--spacing) * 9);     /* h-9 — touch / roomy menus */
+  gap: calc(var(--spacing) * 3);
+}
+
+/* -----------------------------------------------------------------------------
+ * 3. ITEM CONTENTS — icon, label, shortcut, trailing indicator
+ * -------------------------------------------------------------------------- */
+
+/* Leading icon. Observed: 16px viewBox, `opacity-50 shrink-0`, sitting in a
+ * gap-3 row with the label. The half-opacity is the target's signature —
+ * icons never compete with the label. */
+.ds .ds-menu__item-icon {
+  flex-shrink: 0;
+  width: calc(var(--spacing) * 4);    /* 16px — an observed standard icon size */
+  height: calc(var(--spacing) * 4);
+  opacity: 0.5;
+}
+
+/* The icon brightens to full strength on the current row. */
+.ds .ds-menu__item[data-active="true"] .ds-menu__item-icon,
+.ds .ds-menu__item[aria-selected="true"] .ds-menu__item-icon,
+.ds .ds-menu__item:hover .ds-menu__item-icon {
+  opacity: 1;
+}
+
+/* Label. `truncate` — menus never wrap a label; they ellipsize it. */
+.ds .ds-menu__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Inner content row: icon + label share a gap-3 (12px) rhythm. */
+.ds .ds-menu__item-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: calc(var(--spacing) * 3);
+}
+
+/* KEYBOARD HINT / SHORTCUT — <kbd>, observed on the Quick-search trigger:
+ * `ml-auto font-sans text-xs/4 text-neutral-500 dark:text-neutral-400
+ *  whitespace-nowrap`. Those two neutrals are exactly what
+ * --text-color-kumo-subtle resolves to per theme, so the token is the faithful
+ * (and theme-safe) expression of that color. Note font-sans, NOT mono. */
+.ds .ds-menu__shortcut {
+  margin-left: auto;                 /* ml-auto — always flushes right */
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);         /* text-xs/4 -> 12px on a 1rem line box */
+  line-height: calc(var(--spacing) * 4);
+  color: var(--text-color-kumo-subtle);
+  white-space: nowrap;
+}
+
+/* Modifier keys sit back so the action key reads first (observed:
+ * <span class="opacity-50">Ctrl</span>&nbsp;K). */
+.ds .ds-menu__shortcut-key {
+  opacity: 0.5;
+}
+
+/* Trailing check for menuitemcheckbox / menuitemradio and single-select menus.
+ * Reserve the rail always, so labels don't shift when selection moves. */
+.ds .ds-menu__check {
+  flex-shrink: 0;
+  margin-left: auto;
+  width: calc(var(--spacing) * 4);
+  height: calc(var(--spacing) * 4);
+  visibility: hidden;
+}
+
+.ds .ds-menu__item[aria-checked="true"] .ds-menu__check,
+.ds .ds-menu__item[data-active="true"] .ds-menu__check,
+.ds .ds-menu__item[aria-selected="true"] .ds-menu__check {
+  visibility: visible;
+}
+
+/* -----------------------------------------------------------------------------
+ * 4. GROUPS, LABELS & SEPARATORS
+ * Transcribed from data-sidebar="group" / "group-label" / "separator".
+ * -------------------------------------------------------------------------- */
+
+/* Group wrapper: `flex min-w-0 flex-col gap-y-px` */
+.ds .ds-menu__group {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Section label: `truncate px-3 mt-4 mb-2 text-sm font-medium text-kumo-subtle`.
+ * Same size/weight as an item — it's differentiated by COLOR, not by size or
+ * uppercasing. Do not shout it. */
+.ds .ds-menu__group-label {
+  padding-inline: calc(var(--spacing) * 3);
+  margin-block: calc(var(--spacing) * 4) calc(var(--spacing) * 2);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-color-kumo-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The first group in a menu needs no top gutter (observed:
+ * [[data-sidebar=group]:first-child_&]:mt-2). */
+.ds .ds-menu__group:first-child > .ds-menu__group-label {
+  margin-top: calc(var(--spacing) * 2);
+}
+
+/* Separator. Observed as an OUTER spacer + an INNER 1px line, inset from the
+ * panel edge: <div class="my-3 px-2"><div class="border-b border-kumo-line"/></div>.
+ * That inset is deliberate — the rule stops short of the panel's rounded corners.
+ * Reproduced here on one element with a pseudo, so consumers write one node. */
+.ds .ds-menu__separator {
+  margin-block: calc(var(--spacing) * 3);   /* my-3 */
+  padding-inline: calc(var(--spacing) * 2); /* px-2 */
+  height: 0;
+  border: 0;
+}
+
+.ds .ds-menu__separator::after {
+  content: "";
+  display: block;
+  border-bottom: 1px solid var(--color-kumo-line);
+}
+
+/* -----------------------------------------------------------------------------
+ * 5. SUB-MENUS (nested / expandable)
+ * The target expands sub-menus INLINE (a disclosure list), not as a flyout:
+ * <ul data-sidebar="menu-sub" class="... gap-y-px p-0 pl-7 pr-0 overflow-hidden">
+ * pl-7 = 28px — the indent that aligns child labels under the parent's label.
+ * -------------------------------------------------------------------------- */
+.ds .ds-menu__sub {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0 0 0 calc(var(--spacing) * 7);   /* pl-7 pr-0 */
+  list-style: none;
+  overflow: hidden;
+}
+
+/* Sub-items are tighter (gap-2, i.e. 8px) and carry no leading icon by default. */
+.ds .ds-menu__sub .ds-menu__item {
+  gap: calc(var(--spacing) * 2);
+}
+
+/* The sub-menu trigger's chevron rotates on expand. */
+.ds .ds-menu__chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  width: calc(var(--spacing) * 4);
+  height: calc(var(--spacing) * 4);
+  opacity: 0.5;
+  transition: transform var(--ds-menu-item-duration) var(--ds-menu-item-easing);
+}
+
+.ds .ds-menu__item[aria-expanded="true"] .ds-menu__chevron,
+.ds .ds-menu__item[data-state="open"] .ds-menu__chevron {
+  transform: rotate(90deg);
+}
+
+/* -----------------------------------------------------------------------------
+ * 6. TRIGGERS
+ * Transcribed verbatim from the observed trigger buttons (aria-haspopup="menu",
+ * data-kumo-part="trigger"). Unlike menu ITEMS, triggers are buttons: they take
+ * the hairline ring, the xs shadow, and the brand focus ring.
+ * -------------------------------------------------------------------------- */
+.ds .ds-menu-trigger {
+  display: flex;
+  width: max-content;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+
+  height: calc(var(--spacing) * 9);        /* h-9 — the dominant trigger height */
+  gap: calc(var(--spacing) * 1.5);         /* gap-1.5 */
+  padding-inline: calc(var(--spacing) * 3);/* px-3 */
+
+  border: 0;
+  border-radius: var(--radius-lg);
+  background-color: var(--color-kumo-base);
+  color: var(--text-color-kumo-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);             /* text-base = 14px on triggers */
+  font-weight: var(--font-weight-normal);
+  cursor: pointer;
+  user-select: none;
+
+  /* `ring ring-kumo-line shadow-xs` — a 1px hairline ring (not a border) plus the
+   * extra-small drop, stacked in one box-shadow. */
+  box-shadow:
+    0 0 0 1px var(--color-kumo-line),
+    0 1px 2px var(--color-kumo-shadow-drop);
+
+  transition-property: color, background-color, box-shadow;
+  transition-duration: var(--ds-menu-item-duration);
+  transition-timing-function: var(--ds-menu-item-easing);
+}
+
+.ds .ds-menu-trigger:hover:not(:disabled) {
+  background-color: var(--color-kumo-tint);   /* not-disabled:hover:bg-kumo-tint */
+}
+
+/* Focus ring — THE signature of this system:
+ *   focus:ring-kumo-focus/50  -> a soft ring on plain focus
+ *   focus-visible:ring-2 focus-visible:ring-kumo-brand -> a 2px BRAND ring for keyboard
+ * outline is explicitly removed (focus:outline-none) and replaced by the ring. */
+.ds .ds-menu-trigger:focus {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--color-kumo-line),
+    0 0 0 3px color-mix(in oklch, var(--color-kumo-focus) 50%, transparent);
+}
+
+.ds .ds-menu-trigger:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--color-kumo-line),
+    0 0 0 2px var(--color-kumo-brand);
+}
+
+/* Open — the trigger holds the base surface while its menu is up
+ * (data-[state=open]:bg-kumo-base), so it reads as anchored to the panel. */
+.ds .ds-menu-trigger[data-state="open"],
+.ds .ds-menu-trigger[aria-expanded="true"] {
+  background-color: var(--color-kumo-base);
+}
+
+/* Disabled — observed: disabled:bg-kumo-base/50, disabled:!text-kumo-default/70,
+ * disabled:cursor-not-allowed. */
+.ds .ds-menu-trigger:disabled {
+  background-color: color-mix(in oklch, var(--color-kumo-base) 50%, transparent);
+  color: color-mix(in oklch, var(--text-color-kumo-default) 70%, transparent);
+  cursor: not-allowed;
+}
+
+/* Icon-only trigger (the "Actions" / kebab button): size-8 (32px) or size-9 (36px),
+ * square, centered, no horizontal padding. */
+.ds .ds-menu-trigger--icon {
+  width: calc(var(--spacing) * 9);
+  height: calc(var(--spacing) * 9);
+  padding: 0;
+  justify-content: center;
+}
+
+.ds .ds-menu-trigger--icon.ds-menu-trigger--sm {
+  width: calc(var(--spacing) * 8);
+  height: calc(var(--spacing) * 8);
+}
+
+/* Ghost trigger (the user-menu avatar button): no ring, no shadow — it only
+ * tints on hover. Observed: `p-0 text-kumo-default hover:bg-kumo-tint
+ * shadow-none bg-inherit size-8`. */
+.ds .ds-menu-trigger--ghost {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.ds .ds-menu-trigger--ghost:hover:not(:disabled) {
+  background-color: var(--color-kumo-tint);
+}
+
+/* Emphasis trigger (a primary split/action button that opens a menu). Observed
+ * inline: the brand color mixed 10% toward black for the ring, and the fill drawn
+ * from a --kumo-button-emphasis-bg custom property. */
+.ds .ds-menu-trigger--emphasis {
+  --kumo-button-emphasis-bg: color-mix(in oklch, var(--color-kumo-brand), black 10%);
+  --kumo-button-emphasis-ring: color-mix(in oklch, var(--color-kumo-brand), black 10%);
+  background-color: var(--kumo-button-emphasis-bg);
+  color: var(--text-color-kumo-inverse);
+  box-shadow: 0 0 0 1px var(--kumo-button-emphasis-ring);
+}
+
+.ds .ds-menu-trigger--emphasis:hover:not(:disabled) {
+  background-color: var(--color-kumo-brand-hover);
+}
+
+/* -----------------------------------------------------------------------------
+ * 7. SELECT / LISTBOX TRIGGER
+ * Observed: role="combobox" aria-haspopup="listbox" data-kumo-component="Select".
+ * Identical box to .ds-menu-trigger, but justified apart (label left, chevron
+ * right), font-normal, and its keyboard ring is INSET (focus-visible:ring-inset)
+ * so the ring hugs the control rather than bleeding into a dense filter bar.
+ * -------------------------------------------------------------------------- */
+.ds .ds-select-trigger {
+  justify-content: space-between;
+  font-weight: var(--font-weight-normal);
+}
+
+.ds .ds-select-trigger:focus-visible {
+  box-shadow:
+    inset 0 0 0 2px var(--color-kumo-brand),
+    0 0 0 1px var(--color-kumo-line);
+}
+
+/* The selected value truncates; the placeholder uses the placeholder token. */
+.ds .ds-select-trigger .ds-menu__label {
+  text-align: left;
+}
+
+.ds .ds-select-trigger[data-placeholder] .ds-menu__label {
+  color: var(--text-color-kumo-placeholder);
+}
+
+/* -----------------------------------------------------------------------------
+ * 8. SEARCH / COMMAND-PALETTE TRIGGER  ("Quick search…"  Ctrl K)
+ * Observed verbatim: `h-8 text-sm font-normal w-full px-3 gap-2 rounded-lg
+ * bg-kumo-base ring ring-kumo-line shadow-xs
+ * transition-[color,background,border,box-shadow] duration-250`.
+ * A full-width, LEFT-aligned button that looks like an input but is a menu trigger.
+ * -------------------------------------------------------------------------- */
+.ds .ds-menu-search-trigger {
+  display: flex;
+  width: 100%;
+  height: calc(var(--spacing) * 8);           /* h-8 */
+  align-items: center;
+  justify-content: flex-start;
+  gap: calc(var(--spacing) * 2);              /* gap-2 */
+  padding-inline: calc(var(--spacing) * 3);   /* px-3 */
+
+  border: 0;
+  border-radius: var(--radius-lg);
+  background-color: var(--color-kumo-base);
+  color: var(--text-color-kumo-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);                  /* text-sm, NOT text-base */
+  font-weight: var(--font-weight-normal);
+  cursor: pointer;
+  overflow-x: clip;
+
+  box-shadow:
+    0 0 0 1px var(--color-kumo-line),
+    0 1px 2px var(--color-kumo-shadow-drop);
+
+  transition-property: color, background-color, box-shadow;
+  transition-duration: var(--ds-menu-duration);   /* duration-250 (observed) */
+  transition-timing-function: var(--ds-menu-item-easing);
+}
+
+.ds .ds-menu-search-trigger:hover:not(:disabled) {
+  background-color: var(--color-kumo-tint);
+}
+
+.ds .ds-menu-search-trigger:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--color-kumo-line),
+    0 0 0 2px var(--color-kumo-brand);
+}
+
+/* The search glyph is dimmed to half, like every other menu icon. */
+.ds .ds-menu-search-trigger .ds-menu__item-icon {
+  opacity: 0.5;
+}
+
+/* -----------------------------------------------------------------------------
+ * 9. SWITCHER (account / zone picker)
+ * Observed as a menu trigger with data-testid="kumo-user-dropdown-button"
+ * (aria-label="User menu", aria-haspopup="menu", size-8, ghost).
+ * The PANEL treatment below is the switcher convention: a menu whose rows carry
+ * an avatar + a two-line identity block and a trailing check on the current item.
+ * -------------------------------------------------------------------------- */
+.ds .ds-menu--switcher .ds-menu__item {
+  min-height: calc(var(--spacing) * 12);      /* two-line rows need the height */
+  gap: calc(var(--spacing) * 2.5);
+}
+
+/* Avatar / org glyph — square, full-strength (unlike nav icons, identity is
+ * not decorative, so it is NOT dimmed). */
+.ds .ds-menu__avatar {
+  flex-shrink: 0;
+  width: calc(var(--spacing) * 6);            /* w-6 h-6 — the observed square box */
+  height: calc(var(--spacing) * 6);
+  border-radius: var(--radius-sm);
+  opacity: 1;
+}
+
+/* Identity block: primary name over a subtle secondary line (email / account id). */
+.ds .ds-menu__identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0;
+}
+
+.ds .ds-menu__identity-primary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-color-kumo-default);
+  font-weight: var(--font-weight-medium);
+}
+
+.ds .ds-menu__identity-secondary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-normal);
+  color: var(--text-color-kumo-subtle);
+}
+
+/* -----------------------------------------------------------------------------
+ * 10. REDUCED MOTION
+ * The target ships 8 prefers-reduced-motion rules — honor the same contract.
+ * Menus still OPEN, they just stop sliding.
+ * -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .ds .ds-menu,
+  .ds .ds-menu[data-state="open"],
+  .ds .ds-menu__item,
+  .ds .ds-menu__chevron,
+  .ds .ds-menu-trigger,
+  .ds .ds-menu-search-trigger {
+    animation: none;
+    transition: none;
+  }
+}

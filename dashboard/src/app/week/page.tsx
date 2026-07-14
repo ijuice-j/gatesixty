@@ -13,7 +13,7 @@ import {
 } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "../timezone-sync";
-import { DashboardHeader } from "../header";
+import { AppShell } from "../shell";
 
 // Reconstruction reads the live calendar per request — never cache.
 export const dynamic = "force-dynamic";
@@ -38,10 +38,12 @@ export default async function WeekPage({
 
   if (!resolved) {
     return (
-      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
-        <TimezoneSync current={tz} resolved={false} />
-        <p className="mt-4 text-sm text-neutral-500">Loading your week…</p>
-      </main>
+      <AppShell email={user.email} title="Week">
+        <div className="mx-auto w-full max-w-3xl px-6 py-8">
+          <TimezoneSync current={tz} resolved={false} />
+          <p className="text-sm text-[var(--text-color-kumo-subtle)]">Loading your week…</p>
+        </div>
+      </AppShell>
     );
   }
 
@@ -109,102 +111,100 @@ export default async function WeekPage({
   const rangeLabel = `${fmtDay(monday)} – ${fmtDay(days[6])}`;
 
   return (
-    <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
-      <TimezoneSync current={tz} resolved />
-      <DashboardHeader email={user.email} />
+    <AppShell email={user.email} title="Week">
+      <div className="w-full max-w-5xl px-6 py-6">
+        <TimezoneSync current={tz} resolved />
 
-      <div className="mt-6 flex justify-end">
-        <Link
-          href={`/?date=${ref}`}
-          className="text-xs text-neutral-500 underline-offset-2 transition hover:text-neutral-300 hover:underline"
-        >
-          ← Day view
-        </Link>
-      </div>
+        <div className="mb-4 flex items-center gap-1.5">
+          <Link
+            href={`/week?date=${shiftDate(monday, -7)}`}
+            className="ds-btn ds-btn--secondary ds-btn--sm"
+            aria-label="Previous week"
+          >
+            ‹
+          </Link>
+          <Link
+            href={`/week?date=${shiftDate(monday, 7)}`}
+            className="ds-btn ds-btn--secondary ds-btn--sm"
+            aria-label="Next week"
+          >
+            ›
+          </Link>
+          <h2 className="ml-1.5 text-base font-medium tabular-nums">{rangeLabel}</h2>
+        </div>
 
-      <nav className="mt-4 flex items-center justify-between">
-        <Link
-          href={`/week?date=${shiftDate(monday, -7)}`}
-          className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm text-neutral-400 transition hover:text-neutral-200"
-          aria-label="Previous week"
-        >
-          ‹ Prev week
-        </Link>
-        <p className="text-sm font-medium">{rangeLabel}</p>
-        <Link
-          href={`/week?date=${shiftDate(monday, 7)}`}
-          className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm text-neutral-400 transition hover:text-neutral-200"
-          aria-label="Next week"
-        >
-          Next week ›
-        </Link>
-      </nav>
-
-      <section className="mt-8">
         {needsReconnect && (
-          <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
-            Reconnect Google to reconstruct this week.{" "}
-            <form action="/auth/signout" method="post" className="inline">
-              <button className="font-medium underline underline-offset-2">
-                Reconnect
-              </button>
-            </form>
+          <div className="ds-banner ds-banner--warning mb-4">
+            <div className="ds-banner__content">
+              Reconnect Google to reconstruct this week.
+            </div>
+            <div className="ds-banner__actions">
+              <form action="/auth/signout" method="post">
+                <button className="ds-btn ds-btn--outline ds-btn--sm" type="submit">
+                  Reconnect
+                </button>
+              </form>
+            </div>
           </div>
         )}
 
         {loadError && (
-          <p className="text-sm text-red-400">
-            Failed to load activity: {loadError}
-          </p>
+          <div className="ds-banner ds-banner--danger mb-4">
+            <div className="ds-banner__content">Failed to load activity: {loadError}</div>
+          </div>
         )}
 
-        <ul className="space-y-2">
-          {week.map(({ date, summary }) => (
-            <li key={date}>
-              <Link
-                href={`/?date=${date}`}
-                className={`flex items-center gap-4 rounded-lg border bg-neutral-950 px-4 py-3 transition hover:border-neutral-700 ${
-                  date === today ? "border-neutral-700" : "border-neutral-900"
-                }`}
-              >
-                <div className="w-12 shrink-0">
-                  <p className="text-xs text-neutral-500">{fmtWeekday(date)}</p>
-                  <p className="text-sm font-medium tabular-nums">
+        {/* Same list pattern as the day view: one bordered panel, hairline-separated rows. */}
+        <div className="ds-card ds-card--bordered gap-0 overflow-hidden p-0">
+          <ul className="divide-y divide-[var(--color-kumo-line)]">
+            {week.map(({ date, summary }) => (
+              <li key={date}>
+                <Link
+                  href={`/?date=${date}`}
+                  aria-current={date === today ? "date" : undefined}
+                  className="flex h-12 flex-row items-center gap-4 px-4 hover:bg-[var(--color-kumo-fill-hover)] aria-[current]:bg-[var(--color-kumo-tint)]"
+                >
+                  <span className="w-16 shrink-0 text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
+                    <span className="text-[var(--text-color-kumo-default)]">
+                      {fmtWeekday(date)}
+                    </span>{" "}
                     {fmtDayNum(date)}
-                  </p>
-                </div>
+                  </span>
 
-                {summary.total === 0 ? (
-                  <p className="flex-1 text-sm text-neutral-600">No events</p>
-                ) : (
-                  <>
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-800">
-                      <div
-                        className="h-full rounded-full bg-emerald-500"
-                        style={{
-                          width: `${Math.round(
-                            (summary.done / summary.total) * 100,
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                    <p className="shrink-0 text-sm text-neutral-400 tabular-nums">
-                      {summary.done}/{summary.total} done
-                      {summary.missed > 0 && (
-                        <span className="text-amber-400">
-                          {" "}
-                          · {summary.missed} missed
-                        </span>
-                      )}
-                    </p>
-                  </>
-                )}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+                  {summary.total === 0 ? (
+                    <span className="flex-1 text-sm text-[var(--text-color-kumo-inactive)]">
+                      No events
+                    </span>
+                  ) : (
+                    <>
+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-kumo-fill)]">
+                        <span
+                          className="block h-full rounded-full bg-[var(--color-kumo-success)]"
+                          style={{
+                            width: `${Math.round(
+                              (summary.done / summary.total) * 100,
+                            )}%`,
+                          }}
+                        />
+                      </span>
+                      <span className="w-32 shrink-0 text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
+                        {summary.done}/{summary.total} done
+                        {summary.missed > 0 && (
+                          <span className="text-[var(--text-color-kumo-warning)]">
+                            {" "}
+                            · {summary.missed} missed
+                          </span>
+                        )}
+                      </span>
+                    </>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </AppShell>
   );
 }
 

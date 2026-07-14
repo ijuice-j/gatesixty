@@ -7,7 +7,7 @@ import { reconstructDay, type DayItem, type DayStatus } from "@/lib/activity/day
 import { zonedDayRange, dateStringInTz, shiftDate, resolveViewerTimeZone } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "./timezone-sync";
-import { DashboardHeader } from "./header";
+import { AppShell } from "./shell";
 import { toggleDone } from "./actions";
 
 // Reconstruction reads the live calendar per request — never cache.
@@ -35,10 +35,12 @@ export default async function Home({
 
   if (!tzResolved) {
     return (
-      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
-        <TimezoneSync current={tz} resolved={false} />
-        <p className="mt-4 text-sm text-neutral-500">Loading your day…</p>
-      </main>
+      <AppShell email={user.email} title="Activity">
+        <div className="mx-auto w-full max-w-3xl px-6 py-8">
+          <TimezoneSync current={tz} resolved={false} />
+          <p className="text-sm text-[var(--text-color-kumo-subtle)]">Loading your day…</p>
+        </div>
+      </AppShell>
     );
   }
 
@@ -94,101 +96,116 @@ export default async function Home({
     timeZone: "UTC",
   });
 
+  const done = items.filter((i) => i.status === "done").length;
+
   return (
-    <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
-      <TimezoneSync current={tz} resolved />
-      <DashboardHeader email={user.email} />
+    <AppShell
+      email={user.email}
+      title="Activity"
+      actions={
+        items.length > 0 ? (
+          <span className="ds-badge ds-badge--subtle ds-badge--neutral tabular-nums">
+            {done}/{items.length} done
+          </span>
+        ) : undefined
+      }
+    >
+      <div className="w-full max-w-5xl px-6 py-6">
+        <TimezoneSync current={tz} resolved />
 
-      <div className="mt-6 flex justify-end">
-        <Link
-          href={`/week?date=${date}`}
-          className="text-xs text-neutral-500 underline-offset-2 transition hover:text-neutral-300 hover:underline"
-        >
-          Week view →
-        </Link>
-      </div>
-
-      <nav className="mt-4 flex items-center justify-between">
-        <Link
-          href={`/?date=${shiftDate(date, -1)}`}
-          className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm text-neutral-400 transition hover:text-neutral-200"
-          aria-label="Previous day"
-        >
-          ‹ Prev
-        </Link>
-        <div className="text-center">
-          <p className="text-sm font-medium">{dateLabel}</p>
+        <div className="mb-4 flex items-center gap-1.5">
+          <Link
+            href={`/?date=${shiftDate(date, -1)}`}
+            className="ds-btn ds-btn--secondary ds-btn--sm"
+            aria-label="Previous day"
+          >
+            ‹
+          </Link>
+          <Link
+            href={`/?date=${shiftDate(date, 1)}`}
+            className="ds-btn ds-btn--secondary ds-btn--sm"
+            aria-label="Next day"
+          >
+            ›
+          </Link>
+          <h2 className="ml-1.5 text-base font-medium tabular-nums">{dateLabel}</h2>
           {date !== today && (
-            <Link
-              href="/"
-              className="text-xs text-neutral-500 underline-offset-2 hover:underline"
-            >
-              Jump to today
+            <Link href="/" className="ds-btn ds-btn--ghost ds-btn--sm ml-1">
+              Today
             </Link>
           )}
         </div>
-        <Link
-          href={`/?date=${shiftDate(date, 1)}`}
-          className="rounded-md border border-neutral-800 px-3 py-1.5 text-sm text-neutral-400 transition hover:text-neutral-200"
-          aria-label="Next day"
-        >
-          Next ›
-        </Link>
-      </nav>
 
-      <section className="mt-8">
         {needsReconnect && (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-300">
-            Reconnect Google to reconstruct this day.{" "}
-            <form action="/auth/signout" method="post" className="inline">
-              <button className="font-medium underline underline-offset-2">
-                Reconnect
-              </button>
-            </form>
+          <div className="ds-banner ds-banner--warning mb-4">
+            <div className="ds-banner__content">
+              Reconnect Google to reconstruct this day.
+            </div>
+            <div className="ds-banner__actions">
+              <form action="/auth/signout" method="post">
+                <button className="ds-btn ds-btn--outline ds-btn--sm" type="submit">
+                  Reconnect
+                </button>
+              </form>
+            </div>
           </div>
         )}
 
         {loadError && (
-          <p className="text-sm text-red-400">
-            Failed to load activity: {loadError}
-          </p>
+          <div className="ds-banner ds-banner--danger mb-4">
+            <div className="ds-banner__content">Failed to load activity: {loadError}</div>
+          </div>
         )}
 
         {!needsReconnect && !loadError && items.length === 0 && (
-          <p className="text-sm text-neutral-500">
-            No timed events on this day.
-          </p>
+          <div className="ds-card ds-card--bordered">
+            <p className="text-base text-[var(--text-color-kumo-subtle)]">
+              No timed events on this day.
+            </p>
+          </div>
         )}
 
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className="flex items-center gap-3 rounded-lg border border-neutral-900 bg-neutral-950 px-4 py-3"
-            >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: item.color }}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{item.title}</p>
-                <p className="text-xs text-neutral-500">
-                  {formatWindow(item.start, item.end, tz)}
-                </p>
-              </div>
-              <StatusControl item={item} date={date} />
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+        {/* One bordered panel, hairline-separated rows — the target's list pattern.
+            p-0 beats the recipe's p-6 because the recipes sit in @layer components. */}
+        {items.length > 0 && (
+          <div className="ds-card ds-card--bordered gap-0 overflow-hidden p-0">
+            <ul className="divide-y divide-[var(--color-kumo-line)]">
+              {items.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex h-12 flex-row items-center gap-3 px-4 hover:bg-[var(--color-kumo-fill-hover)]"
+                >
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-base font-medium">
+                    {item.title}
+                  </span>
+                  <span className="shrink-0 text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
+                    {formatWindow(item.start, item.end, tz)}
+                  </span>
+                  <StatusControl item={item} date={date} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </AppShell>
   );
 }
 
-const STATUS_STYLES: Record<DayStatus, string> = {
-  done: "bg-emerald-500/10 text-emerald-400",
-  not_done: "bg-amber-500/10 text-amber-400",
-  upcoming: "bg-neutral-500/10 text-neutral-400",
+// Outcome → the badge intent that carries it. `not_done` is a warning, not a danger: a missed
+// event is a fact to notice, not an error to alarm about.
+//
+// success/warning `--subtle` resolve to real tint fills. neutral's tint is deliberately
+// color-mix(… 15%, transparent) — near-invisible on the dark canvas, which reads as unfinished
+// beside two solid pills. `--outline` keeps "upcoming" low-emphasis but still a pill.
+const STATUS_BADGE: Record<DayStatus, string> = {
+  done: "ds-badge--subtle ds-badge--success",
+  not_done: "ds-badge--subtle ds-badge--warning",
+  upcoming: "ds-badge--outline",
 };
 const STATUS_LABEL: Record<DayStatus, string> = {
   done: "Done",
@@ -204,9 +221,7 @@ const STATUS_LABEL: Record<DayStatus, string> = {
 function StatusControl({ item, date }: { item: DayItem; date: string }) {
   if (item.status === "upcoming") {
     return (
-      <span
-        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES.upcoming}`}
-      >
+      <span className={`ds-badge w-24 shrink-0 justify-center ${STATUS_BADGE.upcoming}`}>
         {STATUS_LABEL.upcoming}
       </span>
     );
@@ -226,7 +241,7 @@ function StatusControl({ item, date }: { item: DayItem; date: string }) {
         type="submit"
         aria-label={makeDone ? "Mark done" : "Mark not done"}
         title={makeDone ? "Mark done" : "Mark not done"}
-        className={`cursor-pointer rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ring-transparent transition hover:ring-current ${STATUS_STYLES[item.status]}`}
+        className={`ds-badge w-24 cursor-pointer justify-center ${STATUS_BADGE[item.status]}`}
       >
         {STATUS_LABEL[item.status]}
       </button>

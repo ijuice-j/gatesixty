@@ -1,0 +1,1042 @@
+/* =============================================================================
+ * cloudflare-dashboard — FEEDBACK & OVERLAYS
+ * Tooltip · Popover · Toast/Notification · Banner · Modal/Dialog (+ Drawer)
+ *
+ * SOURCE OF TRUTH
+ *   Target classification = "utility-compiled" (classification.json: score 1.0;
+ *   token-driven 0.813; computedStyleMandatory: true). Named classes do NOT
+ *   carry values — atomic utilities do. Every declaration below was transcribed
+ *   from the compiled stylesheet + rendered DOM in capture/ and resolved through
+ *   the token layer in tokens/colors.css. Nothing here is hand-picked.
+ *
+ * WHAT WAS OBSERVED vs. RECONSTRUCTED vs. PRESCRIPTIVE
+ *   OBSERVED (exact, mined)
+ *     · The one composed elevation shadow:
+ *         0 0 1px .5px var(--color-kumo-shadow-edge), 0 1px 2px var(--color-kumo-shadow-drop)
+ *     · Tooltip/Popover popup marker classes .kumo-tooltip-popup / .kumo-popover-popup
+ *       and their dark-mode rule  outline-offset: -1px
+ *     · Popup outline color  → var(--color-tooltip-border, oklch(26.9% 0 0))   (.outline-tooltip-border)
+ *     · Tooltip/Popover ARROW fills → var(--color-kumo-tip-stroke) / var(--color-kumo-tip-shadow)
+ *       (.fill-kumo-tip-stroke / .fill-kumo-tip-shadow / .shadow-kumo-tip-shadow)
+ *     · Trigger recipe (from data-kumo-component="Popover" | "Dialog" buttons):
+ *         ring 1px ring-kumo-line · shadow-xs · rounded-lg · h-9 · px-3 · gap-1.5
+ *         focus:ring-kumo-focus/50 · focus-visible:ring-2 focus-visible:ring-kumo-brand
+ *         data-[state=open]:bg-kumo-base · disabled:cursor-not-allowed
+ *     · Toast stack math (Base UI Toast), verbatim:
+ *         --gap: .75rem · --peek: .75rem
+ *         --scale: calc(max(0, 1 - (var(--toast-index) * 0.1)))
+ *         --shrink: calc(1 - var(--scale))
+ *         --height: var(--toast-frontmost-height, var(--toast-height))
+ *         --offset-y: calc(var(--toast-offset-y)*-1 + calc(var(--toast-index)*var(--gap)*-1) + var(--toast-swipe-movement-y))
+ *         z-index: calc(1000 - var(--toast-index))
+ *     · Toast viewport stacking: [role=region]:has([data-kumo-component=Toast]) { z-index: var(--z-index-toast) }
+ *     · Toast motion: slide-up / slide-down @ 400ms cubic-bezier(.21,1.02,.73,1);
+ *       attention bump: toast-bump @ 400ms cubic-bezier(.34,1.56,.64,1)
+ *     · Popup enter/exit states: [data-starting-style] / [data-ending-style]
+ *       → opacity 0 + scale(.9) | scale(.985)  (Base UI transition attributes)
+ *     · Banner surfaces: --color-kumo-banner-info / --color-kumo-banner-warning
+ *       (the ONLY two banner tokens that exist)
+ *     · Banner layout hook: --preview-banner-height (offsets header/sidebar/drawer;
+ *       falls back to 0px, and to 24px in the @5xl header offsets)
+ *     · Modal DOM anatomy from @cloudflare/component-modal (data-source-file):
+ *       Modal.tsx:109 (backdrop layer) → Modal.tsx:110 (positioner) →
+ *       BaseModal.js:93 (role=presentation, tabindex=-1, id="focusFallback") →
+ *       BaseModal.js:105 (role=dialog aria-modal=true aria-labelledby)
+ *
+ *   RECONSTRUCTED (token-exact, geometry inferred)
+ *     · Popup PANEL fills/paddings. Tooltips, popovers, dialogs and toasts were all
+ *       CLOSED at capture time (portal-mounted), so the panel box never entered the DOM.
+ *       Colors/radius/hairline/z come from this target's own tokens and its trigger
+ *       conventions; box metrics follow the observed spacing scale.
+ *
+ *   PRESCRIPTIVE (honest guesses — flagged inline)
+ *     · The modal SCRIM. No backdrop-filter and no scrim rule was mined, and the
+ *       system has NO "always dark" semantic token (--color-kumo-contrast INVERTS).
+ *       We therefore build it on the theme-invariant palette primitive
+ *       --color-neutral-950 and expose it as a knob.
+ *     · Modal SIZE steps (built on the mined --container-* tokens).
+ *     · Toast/banner success + danger intents (only info/warning banner tokens exist;
+ *       the success/danger tints do exist and are used the same way elsewhere).
+ *     · Tooltip/popover arrow geometry (side offset, arrow width/height).
+ *
+ * TOKENS USED (verbatim from tokens/colors.css — never a literal)
+ *   surface    --color-kumo-base · --color-kumo-elevated · --color-kumo-overlay
+ *              --color-kumo-canvas · --color-kumo-recessed · --color-kumo-control
+ *   hairline   --color-kumo-line · --color-kumo-hairline · --color-tooltip-border
+ *   arrow      --color-kumo-tip-stroke · --color-kumo-tip-shadow
+ *   elevation  --color-kumo-shadow-edge · --color-kumo-shadow-drop
+ *   focus      --color-kumo-brand · --color-kumo-focus
+ *   intent     --color-kumo-info|success|warning|danger  (+ -tint variants)
+ *              --color-kumo-banner-info · --color-kumo-banner-warning
+ *   text       --text-color-kumo-default|-strong|-subtle|-inverse
+ *              --text-color-kumo-info|-success|-warning|-danger
+ *   z          --z-index-modal (9999) · --z-index-drawer (99999) · --z-index-toast (1000000)
+ *   radius     --radius-lg (.5rem — 946 uses, the house radius) · --radius-md · --radius-sm
+ *   type       --text-sm (13px, dominant) · --text-base (14px) · --text-xs (12px)
+ *   space      --spacing (.25rem base step)
+ *   blur       --blur-xs (4px) · --blur-sm (8px)
+ *
+ * Theme switching is automatic: :root / [data-mode=dark] / .theme-kumo /
+ * .theme-fedramp redefine the vars. Never write a per-theme value in here.
+ *
+ * Scope: every rule is nested under .ds (scope-components.js enforces this).
+ * ========================================================================== */
+
+
+/* =============================================================================
+ * 0. LOCAL KNOBS
+ * Mapped 1:1 onto the target's real values wherever a real value exists.
+ * Kept as vars so a consumer can retune elevation / stacking / motion without
+ * touching the token layer.
+ * ========================================================================== */
+.ds {
+  /* ---- Elevation ---------------------------------------------------------
+   * MINED VERBATIM. This is the target's ONE elevation shadow, authored inline
+   * as a Tailwind arbitrary value. It is deliberately tiny: a 1px contact rim
+   * plus a 2px cast shadow. --color-kumo-shadow-edge FLIPS from black (light)
+   * to white (dark), so in dark mode the rim reads as a top light, not a shadow.
+   * Do NOT substitute shadow-md / shadow-lg — they are not in this system. */
+  --ds-overlay-shadow:
+    0 0 1px 0.5px var(--color-kumo-shadow-edge),
+    0 1px 2px     var(--color-kumo-shadow-drop);
+
+  /* The control-level shadow the target puts on every trigger (Tailwind shadow-xs).
+   * Kept literal because it is a Tailwind primitive, not a token in this system. */
+  --ds-control-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+
+  /* ---- Focus ring --------------------------------------------------------
+   * MINED from the Popover / Dialog triggers. The target uses a RING
+   * (box-shadow), not an outline, and layers two states:
+   *   :focus         → ring stays 1px, tinted with --color-kumo-focus at 50%
+   *   :focus-visible → ring grows to 2px in --color-kumo-brand
+   * Note: --color-kumo-focus INVERTS (near-black in light, near-white in dark). */
+  --ds-ring-width: 1px;
+  --ds-ring-color: var(--color-kumo-line);
+  --ds-ring-width-focus: 2px;
+  --ds-ring-color-focus: var(--color-kumo-brand);
+
+  /* ---- Radius ------------------------------------------------------------
+   * rounded-lg (.5rem) is the house radius: 946 uses vs 21 for rounded-md.
+   * Overlays inherit it. Do not round overlays more than their triggers. */
+  --ds-overlay-radius: var(--radius-lg, 0.5rem);
+
+  /* ---- Stacking ----------------------------------------------------------
+   * Three real z tokens exist. Everything else in the source is an ad-hoc
+   * arbitrary utility, and the source's own ladder is INCONSISTENT
+   * (--z-index-modal is 9999 but the observed div[role=dialog] wears z-[110],
+   * while the drawer sits at z-[1150] ABOVE it). We drive off the tokens and
+   * expose the intermediate rungs so you pick ONE system and stay in it. */
+  --ds-z-dropdown: 110;                               /* obs. z-[110]  */
+  --ds-z-modal:  var(--z-index-modal,  9999);         /* MINED TOKEN   */
+  --ds-z-drawer: var(--z-index-drawer, 99999);        /* MINED TOKEN   */
+  --ds-z-toast:  var(--z-index-toast,  1000000);      /* MINED TOKEN   */
+
+  /* ---- Motion ------------------------------------------------------------
+   * Fast pair = the Tailwind defaults the target ships (--default-transition-*).
+   * Popup pair = the site-wide dominant (.2s / ease — 17 and 15 occurrences).
+   * Toast pair = MINED VERBATIM from the toast enter/exit animations. */
+  --ds-motion-fast-duration: var(--default-transition-duration, 0.1s);
+  --ds-motion-fast-easing:   var(--default-transition-timing-function, cubic-bezier(0.4, 0, 0.2, 1));
+  --ds-motion-popup-duration: 0.2s;
+  --ds-motion-popup-easing:   ease;
+  --ds-motion-toast-duration: 400ms;
+  --ds-motion-toast-easing:   cubic-bezier(0.21, 1.02, 0.73, 1);
+  --ds-motion-bump-easing:    cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---- Scrim — PRESCRIPTIVE ----------------------------------------------
+   * No scrim / backdrop rule and no backdrop-filter were mined; dialogs were
+   * closed at capture. The system has NO semantic token that stays dark in both
+   * themes (--color-kumo-contrast and --color-kumo-focus both INVERT), so a
+   * scrim built on a semantic token would turn near-WHITE in dark mode.
+   * We therefore anchor it on the theme-invariant palette primitive
+   * --color-neutral-950 and expose the opacity as a knob.
+   * The blur steps ARE mined tokens (--blur-xs 4px / --blur-sm 8px); using one
+   * on a scrim is prescriptive. */
+  --ds-scrim-color: var(--color-neutral-950, oklch(14.5% 0 0));
+  --ds-scrim-opacity: 50%;
+  --ds-scrim-blur: 0px;
+
+  /* ---- Arrow — PRESCRIPTIVE geometry, MINED colors -----------------------
+   * The two arrow fill tokens are real and they are complementary:
+   *   light → tip-stroke transparent, tip-shadow gray-200  (soft grey edge)
+   *   dark  → tip-stroke neutral-800, tip-shadow transparent (hard hairline)
+   * i.e. the arrow always picks up exactly one of the two, per theme.
+   * Its SIZE is not recoverable from the capture. */
+  --ds-arrow-width: 12px;
+  --ds-arrow-height: 6px;
+  --ds-arrow-inset: 8px;   /* keeps the arrow off the popup's rounded corner */
+  --ds-popup-offset: 6px;  /* trigger → popup gap (Base UI sideOffset)       */
+
+  /* ---- Banner layout hook — MINED ---------------------------------------
+   * The app shell reads this everywhere:
+   *   header  → top: var(--preview-banner-height, 0px)
+   *   sidebar → h: calc(100vh - var(--preview-banner-height, 0px))
+   *   @5xl    → top: calc(var(--header-height) + var(--preview-banner-height, 24px))
+   * A page-level banner MUST publish its height into this var or the shell will
+   * render underneath it. */
+  --preview-banner-height: 0px;
+}
+
+
+/* =============================================================================
+ * 1. SHARED OVERLAY SURFACE
+ * Tooltip, popover, menu panel, dialog panel and toast are all the same box:
+ * elevated surface + hairline outline + house radius + the one elevation shadow.
+ * Composed once here, so the five components below cannot drift apart.
+ * ========================================================================== */
+
+.ds .ds-overlay-surface {
+  background-color: var(--color-kumo-base);
+  color: var(--text-color-kumo-default);
+  border-radius: var(--ds-overlay-radius);
+
+  /* MINED: the popup hairline is an OUTLINE (not a border, not a ring) — the
+   * target ships .outline-tooltip-border for exactly this, and only overrides
+   * outline-offset in dark. An outline does not participate in layout, which is
+   * why a portal-ed popup uses it. */
+  outline: 1px solid var(--color-tooltip-border, oklch(26.9% 0 0));
+  outline-offset: 0;
+
+  box-shadow: var(--ds-overlay-shadow);
+}
+
+/* MINED VERBATIM: [data-mode=dark] .kumo-tooltip-popup, [data-mode=dark] .kumo-popover-popup
+ * The dark hairline is pulled INSIDE the box so it reads as a rim, not a halo. */
+[data-mode="dark"] .ds .ds-overlay-surface,
+.theme-kumo .ds .ds-overlay-surface {
+  outline-offset: -1px;
+}
+
+/* ---- Arrow (tooltip + popover) --------------------------------------------
+ * Rendered as an SVG/rotated square by the popup primitive. The two fills are
+ * mutually exclusive per theme (see §0), so we paint BOTH: the transparent one
+ * simply contributes nothing. That is exactly how the source's utilities behave. */
+.ds .ds-overlay-arrow {
+  position: absolute;
+  width: var(--ds-arrow-width);
+  height: var(--ds-arrow-height);
+  color: var(--color-kumo-base);        /* the arrow body = the popup surface */
+  fill: var(--color-kumo-tip-stroke);   /* MINED: .fill-kumo-tip-stroke       */
+  filter: drop-shadow(0 1px 0 var(--color-kumo-tip-shadow)); /* MINED: .shadow-kumo-tip-shadow */
+  pointer-events: none;
+}
+
+/* Arrow rotation per side. Base UI stamps data-side on the popup/arrow. */
+.ds .ds-overlay-arrow[data-side="top"]    { bottom: calc(var(--ds-arrow-height) * -1); rotate: 180deg; }
+.ds .ds-overlay-arrow[data-side="bottom"] { top:    calc(var(--ds-arrow-height) * -1); rotate: 0deg;   }
+.ds .ds-overlay-arrow[data-side="left"]   { right:  calc(var(--ds-arrow-height) * -1); rotate: 90deg;  }
+.ds .ds-overlay-arrow[data-side="right"]  { left:   calc(var(--ds-arrow-height) * -1); rotate: -90deg; }
+
+/* ---- Shared enter / exit ---------------------------------------------------
+ * MINED: Base UI drives popup transitions with [data-starting-style] and
+ * [data-ending-style] (NOT data-state), and the observed utilities are
+ * opacity-0 + scale-90 (popups) / scale-[0.985] (large surfaces). */
+.ds .ds-overlay-transition {
+  transition-property: opacity, transform;
+  transition-duration: var(--ds-motion-popup-duration);
+  transition-timing-function: var(--ds-motion-popup-easing);
+}
+.ds .ds-overlay-transition[data-starting-style],
+.ds .ds-overlay-transition[data-ending-style] {
+  opacity: 0;
+  scale: 0.9;
+}
+
+
+/* =============================================================================
+ * 2. TOOLTIP
+ * Non-interactive, hover/focus-triggered label. role="tooltip", never focusable.
+ * Base class: .ds-tooltip  (source marker: .kumo-tooltip-popup)
+ *
+ * NOTE ON THE LEGACY TOOLTIP: the capture also contains a third-party
+ * react-tooltip (.__react_component_tooltip, z-index 999, opacity .9,
+ * background #222, border-radius 3px, padding 8px 21px, 6/8px CSS-triangle
+ * arrows, .place-top|bottom|left|right, .type-dark|light|info|success|warning|error).
+ * It is VENDOR CSS, it is NOT tokenized, and it contradicts the house radius.
+ * It is documented in the .md for identification only — do not port it.
+ * ========================================================================== */
+
+.ds .ds-tooltip {
+  /* composition: .ds-overlay-surface + .ds-overlay-transition */
+  position: absolute;
+  z-index: var(--ds-z-dropdown);
+  max-width: 20rem;                       /* = --container-xs; prescriptive cap */
+
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing, 0.25rem) * 1.5);   /* gap-1.5 = 6px */
+
+  /* py-1.5 / px-2.5 — from the observed spacing histogram (py-1.5 ×14, px-2.5 ×7) */
+  padding-block: calc(var(--spacing, 0.25rem) * 1.5);
+  padding-inline: calc(var(--spacing, 0.25rem) * 2.5);
+
+  font-size: var(--text-sm, 13px);        /* text-sm is the dominant size (914 uses) */
+  line-height: var(--text-sm--line-height, calc(1 / 0.85));
+  font-weight: var(--font-weight-normal, 400);
+  color: var(--text-color-kumo-default);
+
+  pointer-events: none;                   /* a tooltip is never a hit target */
+  user-select: none;
+}
+
+/* Size variants — the tooltip is a single-size component in this system.
+ * The two steps below only change the type ramp; the box follows. */
+.ds .ds-tooltip--sm { font-size: var(--text-xs, 12px); padding-block: var(--spacing, 0.25rem); }
+.ds .ds-tooltip--md { font-size: var(--text-sm, 13px); }   /* default */
+
+/* Multi-line tooltip: a title + a description. Kills the flex row. */
+.ds .ds-tooltip--rich {
+  display: block;
+  max-width: 18rem;                       /* = --container-2xs */
+  padding: calc(var(--spacing, 0.25rem) * 3);   /* p-3 = 12px */
+}
+.ds .ds-tooltip__title {
+  display: block;
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--text-color-kumo-strong);
+}
+.ds .ds-tooltip__description {
+  display: block;
+  margin-top: var(--spacing, 0.25rem);
+  color: var(--text-color-kumo-subtle);
+}
+
+/* A keyboard hint inside a tooltip (the target renders <kbd class="text-xs/4">). */
+.ds .ds-tooltip__kbd {
+  margin-inline-start: auto;
+  padding-inline: calc(var(--spacing, 0.25rem) * 1.5);   /* px-1.5 */
+  border-radius: var(--radius-sm, 0.25rem);
+  background-color: var(--color-kumo-fill);
+  color: var(--text-color-kumo-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs, 12px);
+  line-height: 1rem;                                     /* text-xs/4 */
+}
+
+/* Placement — Base UI sets data-side on the popup itself.
+ * The transform-origin makes the scale-in animation grow OUT of the trigger. */
+.ds .ds-tooltip[data-side="top"]    { transform-origin: bottom center; margin-bottom: var(--ds-popup-offset); }
+.ds .ds-tooltip[data-side="bottom"] { transform-origin: top center;    margin-top:    var(--ds-popup-offset); }
+.ds .ds-tooltip[data-side="left"]   { transform-origin: center right;  margin-right:  var(--ds-popup-offset); }
+.ds .ds-tooltip[data-side="right"]  { transform-origin: center left;   margin-left:   var(--ds-popup-offset); }
+
+/* Alignment along the cross axis (Base UI data-align). */
+.ds .ds-tooltip[data-align="start"] { --ds-arrow-align: var(--ds-arrow-inset); }
+.ds .ds-tooltip[data-align="end"]   { --ds-arrow-align: calc(100% - var(--ds-arrow-inset) - var(--ds-arrow-width)); }
+
+/* Intents — PRESCRIPTIVE.
+ * The system ships NO tooltip intent tokens (the coloured variants in the
+ * capture belong to the legacy vendor tooltip). If you need one, tint the TEXT
+ * and keep the neutral surface — that is how every other kumo surface does it. */
+.ds .ds-tooltip--info    { color: var(--text-color-kumo-info); }
+.ds .ds-tooltip--success { color: var(--text-color-kumo-success); }
+.ds .ds-tooltip--warning { color: var(--text-color-kumo-warning); }
+.ds .ds-tooltip--danger  { color: var(--text-color-kumo-danger); }
+
+/* Trigger — MINED from data-kumo-component="Popover"/"Dialog" buttons.
+ * Reusable by tooltip, popover and dialog alike (they share one trigger recipe). */
+.ds .ds-overlay-trigger {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: calc(var(--spacing, 0.25rem) * 1.5);              /* gap-1.5      */
+  height: calc(var(--spacing, 0.25rem) * 9);             /* h-9 (36px)   */
+  padding-inline: calc(var(--spacing, 0.25rem) * 3);     /* px-3         */
+  border: 0;                                             /* border-0     */
+  border-radius: var(--ds-overlay-radius);               /* rounded-lg   */
+  background-color: var(--color-kumo-base);              /* bg-kumo-base */
+  color: var(--text-color-kumo-default);
+  font-size: var(--text-base, 14px);
+  font-weight: var(--font-weight-medium, 500);
+  user-select: none;
+  cursor: pointer;
+  /* ring 1px + shadow-xs, composited in one box-shadow (this is literally what
+   * Tailwind's ring/shadow utilities do). */
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--ds-ring-color),
+    var(--ds-control-shadow);
+  transition-property: background-color, box-shadow, color;
+  transition-duration: var(--ds-motion-fast-duration);
+  transition-timing-function: var(--ds-motion-fast-easing);
+}
+.ds .ds-overlay-trigger:not(:disabled):hover { background-color: var(--color-kumo-tint); }
+.ds .ds-overlay-trigger:focus               { outline: none; --ds-ring-color: color-mix(in oklab, var(--color-kumo-focus) 50%, transparent); }
+.ds .ds-overlay-trigger:focus-visible       { --ds-ring-width: var(--ds-ring-width-focus); --ds-ring-color: var(--ds-ring-color-focus); }
+.ds .ds-overlay-trigger[data-state="open"]  { background-color: var(--color-kumo-base); }
+.ds .ds-overlay-trigger:disabled {
+  cursor: not-allowed;
+  color: color-mix(in oklab, var(--text-color-kumo-default) 70%, transparent);
+  background-color: color-mix(in oklab, var(--color-kumo-base) 50%, transparent);
+}
+/* An icon-only trigger is a square: size-9, p-0, centered (MINED). */
+.ds .ds-overlay-trigger--icon {
+  justify-content: center;
+  width:  calc(var(--spacing, 0.25rem) * 9);
+  height: calc(var(--spacing, 0.25rem) * 9);
+  padding: 0;
+}
+
+
+/* =============================================================================
+ * 3. POPOVER
+ * Interactive, click-triggered floating panel. Focusable content, own DOM order.
+ * Base class: .ds-popover  (source marker: .kumo-popover-popup)
+ * The trigger is a real button with aria-haspopup="dialog" + aria-expanded
+ * (MINED — Cloudflare's Popover trigger advertises "dialog", not "menu").
+ * ========================================================================== */
+
+.ds .ds-popover {
+  /* composition: .ds-overlay-surface + .ds-overlay-transition */
+  position: absolute;
+  z-index: var(--ds-z-dropdown);
+  display: flex;
+  flex-direction: column;
+
+  min-width: 16rem;                        /* = --container-3xs */
+  max-width: 24rem;                        /* = --container-sm  */
+  max-height: var(--available-height, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  font-size: var(--text-sm, 13px);
+  color: var(--text-color-kumo-default);
+}
+
+/* Sizes — PRESCRIPTIVE, snapped to the mined --container-* scale. */
+.ds .ds-popover--sm { min-width: 16rem; max-width: 20rem; }   /* 3xs → xs  */
+.ds .ds-popover--md { min-width: 20rem; max-width: 24rem; }   /* xs  → sm  */
+.ds .ds-popover--lg { min-width: 24rem; max-width: 28rem; }   /* sm  → md  */
+
+/* Slots. The header row is MINED from the observed floating panel
+ * (h-14 · px-4 · gap-2 · text-base · font-medium · text-kumo-subtle · bg-kumo-elevated
+ *  · rounded-t-lg · hover:bg-kumo-overlay). */
+.ds .ds-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing, 0.25rem) * 2);                /* gap-2  */
+  height: calc(var(--spacing, 0.25rem) * 14);            /* h-14   */
+  padding-inline: calc(var(--spacing, 0.25rem) * 4);     /* px-4   */
+  border-bottom: 1px solid var(--color-kumo-line);
+  border-start-start-radius: var(--ds-overlay-radius);   /* rounded-t-lg */
+  border-start-end-radius: var(--ds-overlay-radius);
+  background-color: var(--color-kumo-elevated);
+  font-size: var(--text-base, 14px);
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--text-color-kumo-subtle);
+}
+.ds .ds-popover__title {
+  font-size: var(--text-base, 14px);
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--text-color-kumo-strong);
+}
+.ds .ds-popover__body {
+  padding: calc(var(--spacing, 0.25rem) * 4);            /* p-4 (18 uses) */
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing, 0.25rem) * 3);                /* gap-3 */
+}
+.ds .ds-popover__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(var(--spacing, 0.25rem) * 2);
+  padding: calc(var(--spacing, 0.25rem) * 3) calc(var(--spacing, 0.25rem) * 4);
+  border-top: 1px solid var(--color-kumo-line);
+  background-color: var(--color-kumo-elevated);
+  border-end-start-radius: var(--ds-overlay-radius);
+  border-end-end-radius: var(--ds-overlay-radius);
+}
+.ds .ds-popover__separator {
+  height: 1px;
+  margin-block: calc(var(--spacing, 0.25rem) * 2);
+  background-color: var(--color-kumo-line);
+}
+
+/* Placement + transform-origin, same contract as the tooltip. */
+.ds .ds-popover[data-side="top"]    { transform-origin: bottom center; margin-bottom: var(--ds-popup-offset); }
+.ds .ds-popover[data-side="bottom"] { transform-origin: top center;    margin-top:    var(--ds-popup-offset); }
+.ds .ds-popover[data-side="left"]   { transform-origin: center right;  margin-right:  var(--ds-popup-offset); }
+.ds .ds-popover[data-side="right"]  { transform-origin: center left;   margin-left:   var(--ds-popup-offset); }
+
+/* An interactive row inside a popover picks up the same hover fill the target
+ * uses everywhere for hit rows (hover:bg-kumo-overlay, data-highlighted:bg-kumo-overlay). */
+.ds .ds-popover__item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing, 0.25rem) * 2);
+  padding: calc(var(--spacing, 0.25rem) * 1.5) calc(var(--spacing, 0.25rem) * 2);
+  border-radius: var(--radius-md, 0.375rem);
+  color: var(--text-color-kumo-default);
+  cursor: pointer;
+  transition: background-color var(--ds-motion-fast-duration) var(--ds-motion-fast-easing);
+}
+.ds .ds-popover__item:hover,
+.ds .ds-popover__item[data-highlighted] { background-color: var(--color-kumo-overlay); }
+.ds .ds-popover__item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 var(--ds-ring-width-focus) var(--ds-ring-color-focus);
+}
+
+
+/* =============================================================================
+ * 4. MODAL / DIALOG
+ * Anatomy MINED from @cloudflare/component-modal (data-source-file attributes):
+ *
+ *   .ds-dialog-backdrop     ← Modal.tsx:109   fixed, covers viewport, the scrim
+ *     .ds-dialog-positioner ← Modal.tsx:110   centers the panel, scrolls if tall
+ *       .ds-dialog-focus-trap ← BaseModal.js:93
+ *                               role="presentation" tabindex="-1" id="focusFallback"
+ *         .ds-dialog        ← BaseModal.js:105
+ *                               role="dialog" aria-modal="true" aria-labelledby=…
+ *           .ds-dialog__header  → <h1 id="…-title">
+ *           .ds-dialog__body    → <p> … </p>
+ *           .ds-dialog__footer  → action <button>
+ * ========================================================================== */
+
+/* ---- Scrim / backdrop — PRESCRIPTIVE (see §0) ------------------------------ */
+.ds .ds-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ds-z-modal);
+  background-color: color-mix(in oklab, var(--ds-scrim-color) var(--ds-scrim-opacity), transparent);
+  transition-property: opacity;
+  transition-duration: var(--ds-motion-popup-duration);
+  transition-timing-function: var(--ds-motion-popup-easing);
+}
+/* MINED transition contract: Base UI stamps these while entering/leaving. */
+.ds .ds-dialog-backdrop[data-starting-style],
+.ds .ds-dialog-backdrop[data-ending-style] { opacity: 0; }
+
+/* Optional blurred scrim. --blur-xs / --blur-sm ARE mined tokens; using one on a
+ * scrim is PRESCRIPTIVE (no backdrop-filter was found anywhere in the capture). */
+.ds .ds-dialog-backdrop--blur {
+  --ds-scrim-blur: var(--blur-xs, 4px);
+  -webkit-backdrop-filter: blur(var(--ds-scrim-blur));
+  backdrop-filter: blur(var(--ds-scrim-blur));
+}
+/* A "light" scrim for non-destructive, low-stakes dialogs. */
+.ds .ds-dialog-backdrop--subtle { --ds-scrim-opacity: 30%; }
+
+/* ---- Positioner ----------------------------------------------------------- */
+.ds .ds-dialog-positioner {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ds-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--spacing, 0.25rem) * 4);            /* p-4 gutter */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Long dialogs pin to the top instead of centring, so the header stays reachable. */
+.ds .ds-dialog-positioner--top { align-items: flex-start; padding-top: calc(var(--spacing, 0.25rem) * 12); }
+
+/* ---- Focus fallback — MINED (role="presentation" tabindex="-1") ------------ */
+.ds .ds-dialog-focus-trap { display: contents; }
+.ds .ds-dialog-focus-trap:focus { outline: none; }
+
+/* ---- The panel ------------------------------------------------------------ */
+.ds .ds-dialog {
+  /* composition: .ds-overlay-surface */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 100%;
+
+  background-color: var(--color-kumo-base);
+  color: var(--text-color-kumo-default);
+  border-radius: var(--ds-overlay-radius);
+  outline: 1px solid var(--color-tooltip-border, oklch(26.9% 0 0));
+  box-shadow: var(--ds-overlay-shadow);
+
+  transition-property: opacity, transform;
+  transition-duration: var(--ds-motion-popup-duration);
+  transition-timing-function: var(--ds-motion-popup-easing);
+}
+/* MINED: large surfaces use the gentler scale-[0.985], not scale-90. */
+.ds .ds-dialog[data-starting-style],
+.ds .ds-dialog[data-ending-style] {
+  opacity: 0;
+  scale: 0.985;
+}
+
+/* ---- Sizes — PRESCRIPTIVE, snapped to the mined --container-* tokens -------
+ * No max-w-* utility survived on a dialog in the capture (they were all closed),
+ * so these are the container scale, not observed widths. */
+.ds .ds-dialog--sm   { max-width: var(--container-sm,  24rem); }   /* confirm / alert  */
+.ds .ds-dialog--md   { max-width: var(--container-md,  28rem); }   /* DEFAULT          */
+.ds .ds-dialog--lg   { max-width: var(--container-xl,  36rem); }   /* form             */
+.ds .ds-dialog--xl   { max-width: var(--container-3xl, 48rem); }   /* table / preview  */
+.ds .ds-dialog--full {
+  max-width: none;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+}
+
+/* ---- Slots ---------------------------------------------------------------- */
+.ds .ds-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(var(--spacing, 0.25rem) * 3);
+  padding: calc(var(--spacing, 0.25rem) * 6) calc(var(--spacing, 0.25rem) * 6) 0;  /* px-6 pt-6 */
+}
+/* MINED: the observed modal titles the dialog with an <h1> carrying the id that
+ * aria-labelledby points at. The observed heading ramp is text-lg (h3) / text-xl (h1). */
+.ds .ds-dialog__title {
+  margin: 0;
+  font-family: var(--font-heading, var(--font-sans));
+  font-size: var(--text-lg, 16px);
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: var(--leading-snug, 1.375);
+  color: var(--text-color-kumo-strong);
+}
+.ds .ds-dialog__description {
+  margin: 0;
+  font-size: var(--text-sm, 13px);
+  color: var(--text-color-kumo-subtle);
+}
+.ds .ds-dialog__body {
+  padding: calc(var(--spacing, 0.25rem) * 4) calc(var(--spacing, 0.25rem) * 6);     /* py-4 px-6 */
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing, 0.25rem) * 3);
+  font-size: var(--text-sm, 13px);
+}
+.ds .ds-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(var(--spacing, 0.25rem) * 2);
+  padding: calc(var(--spacing, 0.25rem) * 4) calc(var(--spacing, 0.25rem) * 6) calc(var(--spacing, 0.25rem) * 6);
+}
+/* Scrolling body: hairline the header/footer so the scroll boundary is legible. */
+.ds .ds-dialog--scroll .ds-dialog__header { padding-bottom: calc(var(--spacing, 0.25rem) * 4); border-bottom: 1px solid var(--color-kumo-line); }
+.ds .ds-dialog--scroll .ds-dialog__footer { border-top: 1px solid var(--color-kumo-line); background-color: var(--color-kumo-elevated); border-end-start-radius: var(--ds-overlay-radius); border-end-end-radius: var(--ds-overlay-radius); }
+
+/* Close button — inherits the hover fill the target uses for every hit target. */
+.ds .ds-dialog__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width:  calc(var(--spacing, 0.25rem) * 8);   /* size-8 — the smaller control step */
+  height: calc(var(--spacing, 0.25rem) * 8);
+  border: 0;
+  border-radius: var(--radius-md, 0.375rem);
+  background-color: transparent;
+  color: var(--text-color-kumo-subtle);
+  cursor: pointer;
+  transition: background-color var(--ds-motion-fast-duration) var(--ds-motion-fast-easing),
+              color            var(--ds-motion-fast-duration) var(--ds-motion-fast-easing);
+}
+.ds .ds-dialog__close:hover { background-color: var(--color-kumo-overlay); color: var(--text-color-kumo-default); }
+.ds .ds-dialog__close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 var(--ds-ring-width-focus) var(--ds-ring-color-focus);
+}
+
+/* ---- Intent variants — PRESCRIPTIVE ---------------------------------------
+ * The system tints the ICON, never the panel (every kumo surface stays neutral).
+ * Use the icon slot; do not paint the dialog red. */
+.ds .ds-dialog__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width:  calc(var(--spacing, 0.25rem) * 9);
+  height: calc(var(--spacing, 0.25rem) * 9);
+  border-radius: var(--radius-lg, 0.5rem);
+}
+.ds .ds-dialog--info    .ds-dialog__icon { background-color: var(--color-kumo-info-tint);    color: var(--text-color-kumo-info); }
+.ds .ds-dialog--success .ds-dialog__icon { background-color: var(--color-kumo-success-tint); color: var(--text-color-kumo-success); }
+.ds .ds-dialog--warning .ds-dialog__icon { background-color: var(--color-kumo-warning-tint); color: var(--text-color-kumo-warning); }
+.ds .ds-dialog--danger  .ds-dialog__icon { background-color: var(--color-kumo-danger-tint);  color: var(--text-color-kumo-danger); }
+
+
+/* =============================================================================
+ * 4b. DRAWER / SIDE SHEET — OBSERVED
+ * Mined verbatim from the DOM: a right-hand fixed panel that sits ABOVE the
+ * dialog in the source's (inconsistent) ladder.
+ *   class="flex flex-col fixed border-l border-kumo-line right-0
+ *          top-[var(--preview-banner-height,0px)]
+ *          h-[calc(100vh-var(--preview-banner-height,0px))]
+ *          bg-kumo-overlay transition-[width,transform] duration-300 ease-in-out z-[1150]"
+ * We keep every trait but drive z off the real --z-index-drawer token.
+ * ========================================================================== */
+.ds .ds-drawer {
+  position: fixed;
+  right: 0;
+  top: var(--preview-banner-height, 0px);
+  height: calc(100vh - var(--preview-banner-height, 0px));
+  z-index: var(--ds-z-drawer);
+
+  display: flex;
+  flex-direction: column;
+
+  background-color: var(--color-kumo-overlay);
+  border-left: 1px solid var(--color-kumo-line);
+
+  transition-property: width, transform;
+  transition-duration: 300ms;                       /* MINED: duration-300 */
+  transition-timing-function: var(--ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));  /* MINED: ease-in-out */
+}
+/* MINED enter/exit for a right-side surface: translate-x-full. */
+.ds .ds-drawer[data-starting-style],
+.ds .ds-drawer[data-ending-style] { translate: 100% 0; }
+.ds .ds-drawer--left { right: auto; left: 0; border-left: 0; border-right: 1px solid var(--color-kumo-line); }
+.ds .ds-drawer--left[data-starting-style],
+.ds .ds-drawer--left[data-ending-style] { translate: -100% 0; }
+
+
+/* =============================================================================
+ * 5. TOAST / NOTIFICATION
+ * The stack math below is MINED VERBATIM from the compiled stylesheet — this is
+ * Base UI's Toast, and Cloudflare configures it with --gap and --peek at .75rem.
+ *
+ *   viewport   [role=region] :has([data-kumo-component=Toast])  → z: --z-index-toast
+ *   toast      z: calc(1000 - var(--toast-index))   ← newer toast = lower index = on top
+ *   collapsed  translateY(swipeY - index*peek - shrink*height) scale(scale)
+ *   expanded   [data-expanded] → height: var(--toast-height); translateY(offsetY)
+ * ========================================================================== */
+
+/* ---- Viewport — MINED (role="region", z from the toast token) -------------- */
+.ds .ds-toast-viewport {
+  position: fixed;
+  z-index: var(--ds-z-toast);
+  right: calc(var(--spacing, 0.25rem) * 4);
+  bottom: calc(var(--spacing, 0.25rem) * 4);
+  width: 20rem;                                   /* = --container-xs (prescriptive) */
+  /* MINED: Cloudflare's configured stack constants. */
+  --gap: 0.75rem;
+  --peek: 0.75rem;
+}
+
+/* ---- Toast ---------------------------------------------------------------- */
+.ds .ds-toast {
+  /* --- MINED stack math, transcribed 1:1 --------------------------------- */
+  --height: var(--toast-frontmost-height, var(--toast-height));
+  --scale: calc(max(0, 1 - (var(--toast-index, 0) * 0.1)));
+  --shrink: calc(1 - var(--scale));
+  --offset-y: calc(
+    var(--toast-offset-y) * -1
+    + calc(var(--toast-index, 0) * var(--gap) * -1)
+    + var(--toast-swipe-movement-y)
+  );
+
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  z-index: calc(1000 - var(--toast-index, 0));       /* MINED */
+
+  /* Collapsed stack: each older toast peeks .75rem and shrinks 10%. */
+  transform:
+    translateX(var(--toast-swipe-movement-x))
+    translateY(calc(
+      var(--toast-swipe-movement-y)
+      - (var(--toast-index, 0) * var(--peek))
+      - (var(--shrink) * var(--height))
+    ))
+    scale(var(--scale));
+
+  /* --- Surface: the shared overlay box ----------------------------------- */
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--spacing, 0.25rem) * 2.5);        /* gap-2.5 */
+  padding: calc(var(--spacing, 0.25rem) * 3) calc(var(--spacing, 0.25rem) * 4);
+
+  background-color: var(--color-kumo-base);
+  color: var(--text-color-kumo-default);
+  border-radius: var(--ds-overlay-radius);
+  outline: 1px solid var(--color-tooltip-border, oklch(26.9% 0 0));
+  box-shadow: var(--ds-overlay-shadow);
+
+  font-size: var(--text-sm, 13px);
+  touch-action: none;                              /* swipe-to-dismiss */
+
+  transition-property: transform, height, opacity;
+  transition-duration: var(--ds-motion-toast-duration);
+  transition-timing-function: var(--ds-motion-toast-easing);
+}
+[data-mode="dark"] .ds .ds-toast,
+.theme-kumo .ds .ds-toast { outline-offset: -1px; }
+
+/* Hovered / focused stack — MINED [data-expanded]: the pile fans out. */
+.ds .ds-toast[data-expanded] {
+  height: var(--toast-height);
+  transform:
+    translateX(var(--toast-swipe-movement-x))
+    translateY(calc(var(--offset-y)));
+}
+
+/* ---- Motion — MINED VERBATIM ----------------------------------------------
+ * enter: slide-up   400ms cubic-bezier(.21,1.02,.73,1)
+ * exit : slide-down 400ms cubic-bezier(.21,1.02,.73,1) forwards
+ * Both are gated behind motion-safe in the source. */
+@media (prefers-reduced-motion: no-preference) {
+  .ds .ds-toast[data-starting-style] {
+    animation: ds-toast-slide-up var(--ds-motion-toast-duration) var(--ds-motion-toast-easing);
+  }
+  /* A toast leaving on its own (not swiped, not evicted by the limit) drops out. */
+  .ds .ds-toast[data-ending-style]:not([data-limited]):not([data-swipe-direction]) {
+    animation: ds-toast-slide-down var(--ds-motion-toast-duration) var(--ds-motion-toast-easing) forwards;
+  }
+}
+/* Swiped away horizontally — MINED: data-[ending-style]:translate-x-full. */
+.ds .ds-toast[data-ending-style][data-swipe-direction] { translate: 100% 0; opacity: 0; }
+/* Evicted because the stack hit its limit — fade, don't slide. */
+.ds .ds-toast[data-ending-style][data-limited] { opacity: 0; }
+
+/* MINED keyframes (renamed, values verbatim). */
+@keyframes ds-toast-slide-up {
+  from { opacity: 0; transform: translateY(100%) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+@keyframes ds-toast-slide-down {
+  from { opacity: 1; transform: translateY(0)    scale(1); }
+  to   { opacity: 0; transform: translateY(100%) scale(0.96); }
+}
+/* MINED: .animate-toast-bump — an existing toast whose content updated. */
+@keyframes ds-toast-bump {
+  0%   { transform: scale(1); }
+  20%  { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+.ds .ds-toast--bump {
+  transform-origin: 50%;
+  animation: ds-toast-bump var(--ds-motion-toast-duration) var(--ds-motion-bump-easing);
+}
+
+/* ---- Toast slots ---------------------------------------------------------- */
+.ds .ds-toast__icon {
+  flex-shrink: 0;
+  width: 16px;                                     /* the 16px icon step (42 uses) */
+  height: 16px;
+  margin-top: 1px;                                 /* optical align to the 13px title */
+}
+.ds .ds-toast__content { flex: 1 1 auto; min-width: 0; }
+.ds .ds-toast__title {
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--text-color-kumo-strong);
+}
+.ds .ds-toast__description {
+  margin-top: var(--spacing, 0.25rem);
+  color: var(--text-color-kumo-subtle);
+}
+.ds .ds-toast__action {
+  margin-top: calc(var(--spacing, 0.25rem) * 2);
+  color: var(--text-color-kumo-link);
+  font-weight: var(--font-weight-medium, 500);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.ds .ds-toast__action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 var(--ds-ring-width-focus) var(--ds-ring-color-focus);
+  border-radius: var(--radius-sm, 0.25rem);
+}
+.ds .ds-toast__close {
+  flex-shrink: 0;
+  width:  calc(var(--spacing, 0.25rem) * 6);
+  height: calc(var(--spacing, 0.25rem) * 6);
+  border: 0;
+  border-radius: var(--radius-md, 0.375rem);
+  background: transparent;
+  color: var(--text-color-kumo-subtle);
+  cursor: pointer;
+}
+.ds .ds-toast__close:hover { background-color: var(--color-kumo-overlay); color: var(--text-color-kumo-default); }
+
+/* ---- Toast intents ---------------------------------------------------------
+ * The surface stays NEUTRAL. Intent lives in the icon colour and a 2px leading
+ * rail — that is how this system signals status everywhere else (it never
+ * repaints a surface). --color-kumo-{info,success,warning,danger} are MINED. */
+.ds .ds-toast--info    { --ds-toast-accent: var(--color-kumo-info); }
+.ds .ds-toast--success { --ds-toast-accent: var(--color-kumo-success); }
+.ds .ds-toast--warning { --ds-toast-accent: var(--color-kumo-warning); }
+.ds .ds-toast--danger  { --ds-toast-accent: var(--color-kumo-danger); }
+.ds .ds-toast--neutral { --ds-toast-accent: var(--color-kumo-fill); }
+
+.ds .ds-toast--info    .ds-toast__icon { color: var(--text-color-kumo-info); }
+.ds .ds-toast--success .ds-toast__icon { color: var(--text-color-kumo-success); }
+.ds .ds-toast--warning .ds-toast__icon { color: var(--text-color-kumo-warning); }
+.ds .ds-toast--danger  .ds-toast__icon { color: var(--text-color-kumo-danger); }
+
+.ds .ds-toast[class*="ds-toast--"]::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 2px;
+  border-start-start-radius: var(--ds-overlay-radius);
+  border-end-start-radius: var(--ds-overlay-radius);
+  background-color: var(--ds-toast-accent, transparent);
+}
+
+/* ---- Loading / promise toast ---------------------------------------------- */
+.ds .ds-toast--loading .ds-toast__icon { animation: var(--animate-spin, spin 1s linear infinite); }
+
+
+/* =============================================================================
+ * 6. BANNER
+ * A full-bleed, page-level (not floating) message. The source ships exactly TWO
+ * banner surface tokens — --color-kumo-banner-info and --color-kumo-banner-warning.
+ * Both are ALPHA colours (light: blue-100/.7 and yellow-100; dark: blue-900/.5 and
+ * yellow-700/.5), so the banner tints the canvas rather than covering it.
+ *
+ * The banner also OWNS a layout contract (MINED): it must publish its rendered
+ * height into --preview-banner-height, because the header, the sidebar and the
+ * drawer all offset themselves by that var.
+ * ========================================================================== */
+
+.ds .ds-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing, 0.25rem) * 2);           /* gap-2 — the dominant gap */
+  width: 100%;
+  min-height: 24px;                                 /* the @5xl fallback height */
+  padding: calc(var(--spacing, 0.25rem) * 2) calc(var(--spacing, 0.25rem) * 4);
+
+  font-size: var(--text-sm, 13px);
+  line-height: var(--text-sm--line-height, calc(1 / 0.85));
+  color: var(--text-color-kumo-default);
+
+  border-radius: 0;                                 /* full-bleed by default */
+  background-color: var(--color-kumo-elevated);     /* neutral fallback */
+}
+
+/* Sticky page banner — the variant --preview-banner-height was invented for. */
+.ds .ds-banner--sticky {
+  position: sticky;
+  top: 0;
+  z-index: var(--ds-z-dropdown);
+}
+
+/* Inline / card banner (a callout inside content, not full-bleed). */
+.ds .ds-banner--inline {
+  border-radius: var(--ds-overlay-radius);
+  padding: calc(var(--spacing, 0.25rem) * 3) calc(var(--spacing, 0.25rem) * 4);
+  align-items: flex-start;
+}
+
+/* ---- Intents ---------------------------------------------------------------
+ * info + warning are MINED (dedicated banner tokens).
+ * success + danger are PRESCRIPTIVE — no banner token exists for them, so we use
+ * the *-tint surfaces the system already uses for the same job elsewhere. */
+.ds .ds-banner--info {
+  background-color: var(--color-kumo-banner-info);           /* MINED */
+  color: var(--text-color-kumo-info);
+  border-bottom: 1px solid var(--color-kumo-info-tint);
+}
+.ds .ds-banner--warning {
+  background-color: var(--color-kumo-banner-warning);        /* MINED */
+  color: var(--text-color-kumo-warning);
+  border-bottom: 1px solid var(--color-kumo-warning-tint);
+}
+.ds .ds-banner--success {                                    /* PRESCRIPTIVE */
+  background-color: color-mix(in oklab, var(--color-kumo-success-tint) 70%, transparent);
+  color: var(--text-color-kumo-success);
+  border-bottom: 1px solid var(--color-kumo-success-tint);
+}
+.ds .ds-banner--danger {                                     /* PRESCRIPTIVE */
+  background-color: color-mix(in oklab, var(--color-kumo-danger-tint) 60%, transparent);
+  color: var(--text-color-kumo-danger);
+  border-bottom: 1px solid var(--color-kumo-danger-tint);
+}
+/* Inline banners get a full hairline instead of just a bottom edge. */
+.ds .ds-banner--inline.ds-banner--info    { border: 1px solid var(--color-kumo-info-tint); }
+.ds .ds-banner--inline.ds-banner--warning { border: 1px solid var(--color-kumo-warning-tint); }
+.ds .ds-banner--inline.ds-banner--success { border: 1px solid var(--color-kumo-success-tint); }
+.ds .ds-banner--inline.ds-banner--danger  { border: 1px solid var(--color-kumo-danger-tint); }
+
+/* ---- Banner slots --------------------------------------------------------- */
+.ds .ds-banner__icon    { flex-shrink: 0; width: 16px; height: 16px; }
+.ds .ds-banner__content { flex: 1 1 auto; min-width: 0; }
+.ds .ds-banner__title   { font-weight: var(--font-weight-medium, 500); }
+.ds .ds-banner__actions { display: flex; align-items: center; gap: calc(var(--spacing, 0.25rem) * 2); flex-shrink: 0; }
+.ds .ds-banner__link    { color: inherit; text-decoration: underline; text-underline-offset: 2px; font-weight: var(--font-weight-medium, 500); }
+.ds .ds-banner__dismiss {
+  flex-shrink: 0;
+  width:  calc(var(--spacing, 0.25rem) * 6);
+  height: calc(var(--spacing, 0.25rem) * 6);
+  border: 0;
+  border-radius: var(--radius-md, 0.375rem);
+  background: transparent;
+  color: currentColor;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.ds .ds-banner__dismiss:hover { opacity: 1; background-color: color-mix(in oklab, currentColor 10%, transparent); }
+.ds .ds-banner__dismiss:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 var(--ds-ring-width-focus) var(--ds-ring-color-focus);
+}
+
+/* ---- Entry animation — MINED (.animate-[fade-in_0.2s_ease-in-out]) --------- */
+@keyframes ds-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.ds .ds-banner--animated { animation: ds-fade-in 0.2s ease-in-out; }
+
+
+/* =============================================================================
+ * 7. REDUCED MOTION
+ * The source ships 8 prefers-reduced-motion rules and gates its toast animations
+ * behind motion-safe. We honour that globally: kill transforms/animations, keep
+ * opacity so state changes remain perceivable.
+ * ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .ds .ds-overlay-transition,
+  .ds .ds-tooltip,
+  .ds .ds-popover,
+  .ds .ds-dialog,
+  .ds .ds-dialog-backdrop,
+  .ds .ds-drawer,
+  .ds .ds-toast {
+    transition-property: opacity;
+    transition-duration: 0.01ms;
+    animation: none !important;
+  }
+  .ds .ds-overlay-transition[data-starting-style],
+  .ds .ds-overlay-transition[data-ending-style],
+  .ds .ds-dialog[data-starting-style],
+  .ds .ds-dialog[data-ending-style] {
+    scale: 1;
+  }
+  .ds .ds-drawer[data-starting-style],
+  .ds .ds-drawer[data-ending-style] { translate: 0 0; }
+  .ds .ds-toast--bump { animation: none; }
+}
+
+
+/* =============================================================================
+ * 8. FORCED COLORS
+ * Outlines survive forced-colors; box-shadows do not. Re-assert the popup edge
+ * so an overlay never becomes an unbounded blob against the forced background.
+ * ========================================================================== */
+@media (forced-colors: active) {
+  .ds .ds-overlay-surface,
+  .ds .ds-tooltip,
+  .ds .ds-popover,
+  .ds .ds-dialog,
+  .ds .ds-toast,
+  .ds .ds-banner--inline {
+    outline: 1px solid CanvasText;
+    outline-offset: 0;
+  }
+  .ds .ds-overlay-trigger:focus-visible,
+  .ds .ds-dialog__close:focus-visible,
+  .ds .ds-toast__action:focus-visible,
+  .ds .ds-banner__dismiss:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}

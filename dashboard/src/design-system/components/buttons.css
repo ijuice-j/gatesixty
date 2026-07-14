@@ -1,0 +1,425 @@
+/* =============================================================================
+ * cloudflare-dashboard — BUTTONS
+ * Re-authored recipes. Every value below is either a var() reference to a token
+ * defined in ../tokens/colors.css (+ the target's Tailwind theme vars, mined into
+ * ../../capture/computed-tokens.json) or a geometry value transcribed from the
+ * target's utility classes on `[data-kumo-component="Button" | "LinkButton"]` elements.
+ *
+ * Source of truth
+ *   - ../../capture/_classes.json        → class → declaration map (colors/ring/text)
+ *   - ../../capture/computed-tokens.json → resolved theme vars (target is UTILITY-COMPILED,
+ *                                          so resolved values are authoritative — see below)
+ *   - ../../capture/*.html               → the actual class strings on button elements
+ *   - ../../capture/facts.json           → counts, height↔type pairings
+ *
+ * NOTE ON CLASSIFICATION: ../../capture/classification.json ranks this target `utility-compiled`
+ * (utilityRatio 0.79). Buttons are NOT driven by a `--button-*` token family; they
+ * are Tailwind utility stacks over the `kumo` semantic color tokens. The one true
+ * button-scoped token family is `--kumo-button-emphasis-*`, which the app defines
+ * INLINE on each emphasis button as color-mix() derivations of --color-kumo-brand.
+ * Those four derivations are reproduced verbatim in .ds-btn--emphasis below.
+ *
+ * Theming: light = :root, dark = [data-mode=dark] (also .theme-fedramp / .theme-kumo).
+ * Never hardcode a per-theme value — the vars flip themselves.
+ *
+ * Scope: every rule is authored under `.ds` (scope-components.js enforces this).
+ * ========================================================================== */
+
+/* -----------------------------------------------------------------------------
+ * 1. BASE
+ * From the shared prefix of every Button/LinkButton class string:
+ *   group flex w-max shrink-0 items-center font-medium select-none border-0
+ *   focus:outline-none focus:ring-kumo-focus/50
+ *   focus-visible:ring-2 focus-visible:ring-kumo-brand
+ *   cursor-pointer disabled:cursor-not-allowed disabled:text-kumo-subtle
+ *
+ * The "ring" is a box-shadow (Tailwind ring semantics), NOT a border — every
+ * button carries `border-0`. Ring width/colour are driven by local custom props
+ * so that variants and states can re-point them without re-declaring box-shadow.
+ * -------------------------------------------------------------------------- */
+.ds .ds-btn {
+  /* --- geometry knobs, set by the size classes (default = md / h-9) --- */
+  --ds-btn-h: calc(var(--spacing, 0.25rem) * 9);      /* 36px */
+  --ds-btn-px: calc(var(--spacing, 0.25rem) * 3);     /* 12px */
+  --ds-btn-gap: calc(var(--spacing, 0.25rem) * 1.5);  /*  6px */
+  --ds-btn-radius: var(--radius-lg, 0.5rem);          /*  8px */
+  --ds-btn-font-size: var(--text-base, 14px);         /* 14px — target overrides Tailwind's default scale */
+  --ds-btn-line-height: var(--text-base--line-height, calc(1.25 / 0.875));
+  --ds-btn-icon-size: calc(var(--spacing, 0.25rem) * 4); /* 16px (`size-4`, the dominant in-button icon) */
+
+  /* --- ring + elevation knobs, set by the variant/state rules ---
+   * The variants that carry `shadow-xs` compose it as
+   *   0 1px 2px 0 var(--color-kumo-shadow-drop)
+   * There is NO --shadow-xs in the shipped token layer (tokens.json's only shadow
+   * entries are --color-kumo-shadow-drop / -edge, --color-kumo-tip-shadow,
+   * --drop-shadow-sm, --shadow-color-rgb and the --tw-* internals; ../tokens/index.css
+   * says the same). --color-kumo-shadow-drop is the theme-reactive one — oklch(0% 0 0/.08)
+   * light, oklch(0% 0 0/.3) dark — so composing from it is what makes button elevation
+   * flip with the theme, exactly as data-display.css (--ds-shadow-xs) and navigation.css do. */
+  --ds-btn-ring-inset: ;                              /* empty ⇒ outset; `inset` ⇒ inset ring */
+  --ds-btn-ring-width: 0px;
+  --ds-btn-ring-color: transparent;
+  --ds-btn-shadow: 0 0 #0000;                         /* `shadow-none` */
+
+  display: flex;                                      /* `flex items-center` — inline-flex for LinkButton */
+  align-items: center;
+  width: max-content;                                 /* `w-max` */
+  flex-shrink: 0;                                     /* `shrink-0` */
+  gap: var(--ds-btn-gap);
+  height: var(--ds-btn-h);
+  padding-block: 0;
+  padding-inline: var(--ds-btn-px);
+  border: 0;                                          /* `border-0` — the outline is the ring */
+  border-radius: var(--ds-btn-radius);
+
+  font: inherit;
+  font-family: var(--font-sans);
+  font-size: var(--ds-btn-font-size);
+  line-height: var(--ds-btn-line-height);
+  font-weight: var(--font-weight-medium, 500);        /* `font-medium` */
+  text-align: center;
+  white-space: nowrap;
+
+  background-color: transparent;
+  color: var(--text-color-kumo-default);
+
+  cursor: pointer;                                    /* `cursor-pointer` — kept even on <button> */
+  user-select: none;                                  /* `select-none` */
+  -webkit-tap-highlight-color: transparent;
+
+  box-shadow:
+    var(--ds-btn-ring-inset) 0 0 0 var(--ds-btn-ring-width) var(--ds-btn-ring-color),
+    var(--ds-btn-shadow);
+}
+
+/* Icons inside a button: `size-4` (16px) on 8/9 observed in-button SVGs,
+ * `size-4.5` (18px) once. All are fill-based (facts.json icons.dominantStyle
+ * = "fill") and inherit colour via fill="currentColor". */
+.ds .ds-btn > :where(svg, img) {
+  flex: 0 0 auto;
+  width: var(--ds-btn-icon-size);
+  height: var(--ds-btn-icon-size);
+}
+
+/* Optional content wrappers, mirroring the target's DOM
+ * (`<span class="contents">` → label slot; used so the flex gap still applies). */
+.ds .ds-btn__label {
+  display: contents;
+}
+
+/* -----------------------------------------------------------------------------
+ * 2. SIZES
+ * The component ships three built-in size groups (each is one atomic utility
+ * cluster in the compiled class string):
+ *   xs  h-6.5 gap-1   rounded-md px-2 text-xs     (icon: size-6.5, p-0)
+ *   md  h-9   gap-1.5 rounded-lg px-3 text-base   (icon: size-9,  p-0)   ← default
+ *   lg  h-10  gap-2   rounded-lg px-4 text-base
+ * `sm` below is NOT a built-in group: `h-8`/`size-8` is appended by consumers
+ * after the size cluster. It is nonetheless the single most common control
+ * height in the capture (facts.json usage.controlHeightsByTag.button:
+ * h-8 = 16, h-9 = 26, h-10 = 2), so it is promoted to a first-class recipe.
+ * -------------------------------------------------------------------------- */
+
+/* xs / compact — 26px, 12px type, 6px radius. The only size that uses rounded-md. */
+.ds .ds-btn--xs {
+  --ds-btn-h: calc(var(--spacing, 0.25rem) * 6.5);   /* 26px */
+  --ds-btn-px: calc(var(--spacing, 0.25rem) * 2);    /*  8px */
+  --ds-btn-gap: calc(var(--spacing, 0.25rem) * 1);   /*  4px */
+  --ds-btn-radius: var(--radius-md, 0.375rem);       /*  6px */
+  --ds-btn-font-size: var(--text-xs, 12px);
+  --ds-btn-line-height: var(--text-xs--line-height, calc(1 / 0.75));
+  /* PRESCRIPTIVE: no icon size class was observed inside an xs button.
+   * 14px keeps the icon:type ratio of the md size (16:14). */
+  --ds-btn-icon-size: calc(var(--spacing, 0.25rem) * 3.5); /* 14px */
+}
+
+/* sm — 32px. Override-derived (see note above). Two type pairings are observed
+ * (facts.json usage.buttonHeightTypePairs): `h-8 | text-sm` ×8 and
+ * `h-8 | text-base` ×8. text-base is the component default and is kept here;
+ * add .ds-btn--type-sm for the 13px pairing. */
+.ds .ds-btn--sm {
+  --ds-btn-h: calc(var(--spacing, 0.25rem) * 8);     /* 32px */
+  --ds-btn-px: calc(var(--spacing, 0.25rem) * 3);    /* 12px */
+  --ds-btn-gap: calc(var(--spacing, 0.25rem) * 1.5); /*  6px */
+  --ds-btn-radius: var(--radius-lg, 0.5rem);
+}
+
+/* md — 36px. DEFAULT (already encoded in .ds-btn); provided as an explicit class. */
+.ds .ds-btn--md {
+  --ds-btn-h: calc(var(--spacing, 0.25rem) * 9);     /* 36px */
+  --ds-btn-px: calc(var(--spacing, 0.25rem) * 3);    /* 12px */
+  --ds-btn-gap: calc(var(--spacing, 0.25rem) * 1.5); /*  6px */
+  --ds-btn-radius: var(--radius-lg, 0.5rem);
+  --ds-btn-font-size: var(--text-base, 14px);
+  --ds-btn-line-height: var(--text-base--line-height, calc(1.25 / 0.875));
+}
+
+/* lg — 40px. Wider padding (px-4) and a wider gap (gap-2). */
+.ds .ds-btn--lg {
+  --ds-btn-h: calc(var(--spacing, 0.25rem) * 10);    /* 40px */
+  --ds-btn-px: calc(var(--spacing, 0.25rem) * 4);    /* 16px */
+  --ds-btn-gap: calc(var(--spacing, 0.25rem) * 2);   /*  8px */
+  --ds-btn-radius: var(--radius-lg, 0.5rem);
+  --ds-btn-font-size: var(--text-base, 14px);
+  --ds-btn-line-height: var(--text-base--line-height, calc(1.25 / 0.875));
+}
+
+/* Type override for the `h-8 | text-sm` pairing (search / trigger rows). */
+.ds .ds-btn--type-sm {
+  --ds-btn-font-size: var(--text-sm, 13px);
+  --ds-btn-line-height: var(--text-sm--line-height, calc(1 / 0.85));
+}
+
+/* -----------------------------------------------------------------------------
+ * 3. SHAPE MODIFIERS
+ * -------------------------------------------------------------------------- */
+
+/* Icon-only. `items-center justify-center p-0 size-N` — a SQUARE box whose side
+ * equals the size's control height (size-6.5 / size-8 / size-9). Requires aria-label. */
+.ds .ds-btn--icon {
+  justify-content: center;
+  width: var(--ds-btn-h);
+  padding-inline: 0;
+}
+
+/* Full-bleed (sidebar quick-search style): `w-full block overflow-x-clip`. */
+.ds .ds-btn--block {
+  width: 100%;
+  justify-content: flex-start;
+  overflow-x: clip;
+}
+
+/* Menu / select trigger: `justify-between font-normal focus-visible:ring-inset`.
+ * Pair with .ds-btn--secondary; the caret sits in a trailing
+ * `<span aria-hidden>` coloured --text-color-kumo-subtle. */
+.ds .ds-btn--trigger {
+  justify-content: space-between;
+  font-weight: var(--font-weight-normal, 400);
+}
+.ds .ds-btn--trigger:focus-visible {
+  --ds-btn-ring-inset: inset;
+}
+.ds .ds-btn--trigger > :where([data-slot='caret'], [aria-hidden='true']) {
+  color: var(--text-color-kumo-subtle);
+}
+.ds .ds-btn--trigger [data-placeholder] {
+  color: var(--text-color-kumo-placeholder);
+}
+.ds .ds-btn--trigger > :where(span:first-child) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* -----------------------------------------------------------------------------
+ * 4. VARIANTS
+ * Observed frequency across the 8 captured pages (57 Button/LinkButton nodes):
+ *   ghost 32 · secondary 16 · emphasis 7 · outline 2
+ * -------------------------------------------------------------------------- */
+
+/* --- 4a. EMPHASIS (the primary / call-to-action) -----------------------------
+ * Class stack:
+ *   relative overflow-hidden bg-(--kumo-button-emphasis-bg) !text-white
+ *   ring ring-(--kumo-button-emphasis-ring) disabled:opacity-50 shadow-xs
+ * The app writes the four --kumo-button-emphasis-* props INLINE on the element as
+ * color-mix() derivations of --color-kumo-brand. They are reproduced verbatim here
+ * so the variant stays theme-reactive (brand = blue oklch(57.72% .2324 260) in light,
+ * oklch(51.948% .2324 260) in dark — NOT the Cloudflare orange, which is the
+ * *text* brand token --text-color-kumo-brand).
+ *
+ * A gradient overlay sits above the flat bg: `<span aria-hidden class="absolute
+ * inset-0 rounded-[inherit] bg-linear-to-b from-(--…-gradient-start)
+ * to-(--…-gradient-end) translate-y-px group-hover:from-(--…-bg)">`.
+ * Reproduced with ::before so plain markup works; .ds-btn__overlay is kept for
+ * DOM parity with the source. On hover the gradient START flattens to the base
+ * bg — that is the entire hover affordance (there is no bg or ring change). */
+.ds .ds-btn--emphasis {
+  --kumo-button-emphasis-bg: color-mix(in oklch, var(--color-kumo-brand), white 30%);
+  --kumo-button-emphasis-ring: color-mix(in oklch, var(--color-kumo-brand), black 10%);
+  --kumo-button-emphasis-gradient-start: color-mix(in oklch, var(--color-kumo-brand), white 15%);
+  --kumo-button-emphasis-gradient-end: var(--color-kumo-brand);
+
+  position: relative;
+  isolation: isolate;                                 /* keeps the -1 overlay inside the button */
+  overflow: hidden;
+  background-color: var(--kumo-button-emphasis-bg);
+  color: var(--color-white, #fff);                    /* `!text-white` — label is always white, both themes */
+  --ds-btn-ring-width: 1px;                           /* Tailwind `ring` = 1px */
+  --ds-btn-ring-color: var(--kumo-button-emphasis-ring);
+  --ds-btn-shadow: 0 1px 2px 0 var(--color-kumo-shadow-drop); /* `shadow-xs` */
+}
+.ds .ds-btn--emphasis::before,
+.ds .ds-btn--emphasis > .ds-btn__overlay {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;                             /* `rounded-[inherit]` */
+  transform: translateY(1px);                         /* `translate-y-px` — fakes a lit top edge */
+  background-image: linear-gradient(
+    to bottom in oklab,
+    var(--kumo-button-emphasis-gradient-start),
+    var(--kumo-button-emphasis-gradient-end)
+  );
+}
+.ds .ds-btn--emphasis > .ds-btn__overlay {
+  content: none;
+}
+.ds .ds-btn--emphasis:hover::before,
+.ds .ds-btn--emphasis:hover > .ds-btn__overlay {
+  background-image: linear-gradient(
+    to bottom in oklab,
+    var(--kumo-button-emphasis-bg),
+    var(--kumo-button-emphasis-gradient-end)
+  );
+}
+.ds .ds-btn--emphasis:disabled,
+.ds .ds-btn--emphasis[aria-disabled='true'] {
+  opacity: 0.5;                                       /* `disabled:opacity-50` */
+  color: var(--color-white, #fff);                    /* emphasis keeps its white label when disabled */
+}
+
+/* --- 4b. SECONDARY (the default surfaced button; also every menu/select trigger)
+ * Class stack:
+ *   shadow-xs bg-kumo-base !text-kumo-default ring ring-kumo-line
+ *   not-disabled:hover:bg-kumo-tint disabled:bg-kumo-base/50
+ *   disabled:!text-kumo-default/70 data-[state=open]:bg-kumo-base            */
+.ds .ds-btn--secondary {
+  background-color: var(--color-kumo-base);
+  color: var(--text-color-kumo-default);
+  --ds-btn-ring-width: 1px;
+  --ds-btn-ring-color: var(--color-kumo-line);
+  --ds-btn-shadow: 0 1px 2px 0 var(--color-kumo-shadow-drop); /* `shadow-xs` */
+}
+.ds .ds-btn--secondary:hover:not(:disabled) {
+  background-color: var(--color-kumo-tint);           /* `not-disabled:hover:bg-kumo-tint` */
+}
+/* Open menu/select trigger holds the resting surface (it does NOT stay tinted). */
+.ds .ds-btn--secondary[data-state='open'],
+.ds .ds-btn--secondary[aria-expanded='true'] {
+  background-color: var(--color-kumo-base);
+}
+.ds .ds-btn--secondary:disabled,
+.ds .ds-btn--secondary[aria-disabled='true'] {
+  background-color: color-mix(in oklab, var(--color-kumo-base) 50%, transparent);
+  color: color-mix(in oklab, var(--text-color-kumo-default) 70%, transparent);
+}
+
+/* --- 4c. GHOST (the workhorse — 32/57 of all buttons) ------------------------
+ * Class stack: text-kumo-default hover:bg-kumo-tint shadow-none bg-inherit
+ * `bg-inherit` (not `transparent`): the button inherits its parent surface, so a
+ * ghost button inside an elevated card reads as part of the card. No ring at rest. */
+.ds .ds-btn--ghost {
+  background-color: inherit;
+  color: var(--text-color-kumo-default);
+  --ds-btn-ring-width: 0px;
+  --ds-btn-shadow: 0 0 #0000;                         /* `shadow-none` */
+}
+.ds .ds-btn--ghost:hover:not(:disabled) {
+  background-color: var(--color-kumo-tint);
+}
+
+/* --- 4d. OUTLINE (quiet bordered; 2/57 — the rarest real variant) ------------
+ * Class stack:
+ *   bg-transparent text-kumo-default ring ring-kumo-line transition-colors
+ *   not-disabled:hover:text-kumo-strong not-disabled:hover:ring-kumo-focus/25
+ * The only variant that declares a transition. Hover strengthens the LABEL and
+ * the ring rather than filling the surface. */
+.ds .ds-btn--outline {
+  background-color: transparent;
+  color: var(--text-color-kumo-default);
+  --ds-btn-ring-width: 1px;
+  --ds-btn-ring-color: var(--color-kumo-line);
+  --ds-btn-shadow: 0 1px 2px 0 var(--color-kumo-shadow-drop); /* `shadow-xs` */
+  /* `transition-colors`: colour properties only — the ring is a box-shadow and is
+   * therefore NOT transitioned in the source. Preserved as-is. */
+  transition-property: color, background-color, border-color;
+  transition-duration: var(--default-transition-duration, 0.1s);
+  transition-timing-function: var(--default-transition-timing-function, cubic-bezier(0.4, 0, 0.2, 1));
+}
+.ds .ds-btn--outline:hover:not(:disabled) {
+  color: var(--text-color-kumo-strong);
+  --ds-btn-ring-color: color-mix(in oklab, var(--color-kumo-focus) 25%, transparent);
+}
+
+/* -----------------------------------------------------------------------------
+ * 5. STATES (shared)
+ * Order matters: :focus paints the soft neutral ring, :focus-visible upgrades it
+ * to the 2px brand ring. Both suppress the UA outline, so neither may be removed.
+ * -------------------------------------------------------------------------- */
+
+/* `focus:outline-none focus:ring-kumo-focus/50` — mouse/programmatic focus keeps
+ * the ring WIDTH the variant already has (1px, or 0 for ghost) and only recolours. */
+.ds .ds-btn:focus {
+  outline: none;
+  --ds-btn-ring-color: color-mix(in oklab, var(--color-kumo-focus) 50%, transparent);
+}
+
+/* `focus-visible:ring-2 focus-visible:ring-kumo-brand` — the real focus indicator. */
+.ds .ds-btn:focus-visible {
+  outline: none;
+  --ds-btn-ring-width: 2px;
+  --ds-btn-ring-color: var(--color-kumo-brand);
+}
+
+/* `disabled:cursor-not-allowed disabled:text-kumo-subtle` (all variants). */
+.ds .ds-btn:disabled,
+.ds .ds-btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  color: var(--text-color-kumo-subtle);
+}
+
+/* NOT OBSERVED — no `active:` / pressed treatment exists on any captured button.
+ * NOT OBSERVED — no transition on the base component: hover colour changes are
+ * instantaneous everywhere except .ds-btn--outline. If you want the (very common)
+ * 100ms colour fade, opt in explicitly rather than changing the base: */
+.ds .ds-btn--animated {
+  transition-property: color, background-color, box-shadow;
+  transition-duration: var(--default-transition-duration, 0.1s);
+  transition-timing-function: var(--default-transition-timing-function, cubic-bezier(0.4, 0, 0.2, 1));
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds .ds-btn--animated {
+    transition: none;
+  }
+}
+
+/* PRESCRIPTIVE — no loading/busy button was observed in the capture (no
+ * aria-busy, no animate-spin inside any button). Recipe kept minimal and honest:
+ * hold the box, swap the content, keep the accessible name. */
+.ds .ds-btn[aria-busy='true'] {
+  cursor: progress;
+  pointer-events: none;
+}
+.ds .ds-btn[aria-busy='true'] > :where(:not([data-slot='spinner'])) {
+  visibility: hidden;
+}
+
+/* -----------------------------------------------------------------------------
+ * 6. LINK BUTTON (`<a data-kumo-component="LinkButton">`)
+ * Identical recipe; the only deltas are `no-underline!` and `flex items-center`.
+ * 14 instances observed, in all four variants. Combine with any size/variant.
+ * -------------------------------------------------------------------------- */
+.ds a.ds-btn,
+.ds .ds-link-btn {
+  text-decoration: none;                              /* `no-underline!` */
+  display: inline-flex;
+}
+
+/* Disabled links cannot use :disabled — drive them from aria-disabled. */
+.ds a.ds-btn[aria-disabled='true'] {
+  pointer-events: none;
+}
+
+/* -----------------------------------------------------------------------------
+ * 7. RELATED — NOT part of the Button family
+ * Documented so nobody re-implements Button on top of them.
+ *
+ * a) Sidebar menu item (`group/menu-button`, 176+ nodes): a full-width <button>
+ *    with min-h-8.5 (34px), gap-2.5, rounded-lg, text-sm, and a hover surface
+ *    driven by --sidebar-active-bg (not --color-kumo-tint). See ./navigation.md
+ *    (recipes in ./navigation.css).
+ * b) Quiet table/column control (18 nodes): `w-5.5 h-9 grid place-items-center
+ *    bg-transparent p-0 opacity-0 hocus:opacity-50` — a reveal-on-hover affordance,
+ *    NOT a button variant.
+ * -------------------------------------------------------------------------- */

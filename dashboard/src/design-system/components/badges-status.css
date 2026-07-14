@@ -1,0 +1,454 @@
+/* =============================================================================
+ * cloudflare-dashboard — BADGES & STATUS
+ * Re-authored component recipes. Token values are NEVER inlined here: every
+ * color resolves through the var(--...) tokens defined in ../tokens/colors.css,
+ * which re-declare themselves under :root and [data-mode=dark]. Theme switching
+ * therefore requires NO variant classes — just use the vars.
+ *
+ * PROVENANCE (what the capture actually proves):
+ *   - badge elements: 136 raw / 17 deduped per page across 8 pages
+ *     (../../capture/facts.json).
+ *   - THREE badge shapes are observed in the rendered DOM:
+ *       1. lifecycle "dashed" badge  — 136/136 instances (labels: Beta, New, Alpha)
+ *       2. "elevated" dot badge      — members.html (labels: Active, On)
+ *       3. "subtle" info pill (link) — billing.html (label: Billing Docs)
+ *   - EVERY observed badge is a full pill (border-radius 9999px). The target's
+ *     dominant radius elsewhere is rounded-lg (946 uses); badges never use it.
+ *   - The 8-hue badge palette (--color-kumo-badge-*) and the 4 status intents
+ *     (--color-kumo-{success,danger,warning,info}[-tint]) are token-backed and
+ *     have compiled utilities in the stylesheet, but only `info` is exercised on
+ *     a badge in the captures. Intent/hue GUIDANCE below is therefore
+ *     PRESCRIPTIVE — the VALUES are exact, the usage is our recommendation.
+ *
+ * Scope: all recipes live under `.ds` — every selector below is prefixed with it.
+ * ========================================================================== */
+
+/* -----------------------------------------------------------------------------
+ * 1. BASE
+ * Transcribed from the observed lifecycle badge:
+ *   inline-flex shrink-0 items-center rounded-full border border-dashed
+ *   border-kumo-line select-none px-1.5 py-0.5 text-[11px]/none font-medium
+ *   text-kumo-strong
+ * The base holds only the shape/typography that ALL three observed badges share;
+ * color is delegated to the intent + style layers via local custom properties so
+ * the variant x intent matrix stays additive (O(n+m)) instead of combinatorial.
+ * -------------------------------------------------------------------------- */
+
+.ds .ds-badge {
+  /* --- intent channel: set by the intent classes in section 3 ---------------
+   * Defaults are the NEUTRAL hue, so a bare `.ds-badge` is already valid. */
+  --ds-badge-accent: var(--color-kumo-badge-neutral);
+  /* No --color-kumo-badge-neutral-subtle token exists (see section 3b); the
+   * tint is derived from the hue. The FOREGROUND token, however, is real. */
+  --ds-badge-tint: color-mix(in oklab, var(--color-kumo-badge-neutral) 15%, transparent);
+  --ds-badge-on-tint: var(--text-color-kumo-badge-neutral-subtle);
+  --ds-badge-on-solid: var(--text-color-kumo-badge-inverted);
+
+  /* --- paint channel: set by the style classes in section 2 ----------------- */
+  --ds-badge-bg: transparent;
+  --ds-badge-fg: var(--text-color-kumo-strong);
+  --ds-badge-border: transparent;
+  --ds-badge-border-style: solid;
+
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5); /* 6px — observed on the dot badge (gap-1.5) */
+  flex: none; /* shrink-0: badges never compress inside a flex row */
+  width: fit-content;
+
+  /* Pill. Every observed badge is fully rounded; do not substitute --radius-lg. */
+  border-radius: 9999px;
+  border: 1px var(--ds-badge-border-style) var(--ds-badge-border);
+
+  background-color: var(--ds-badge-bg);
+  color: var(--ds-badge-fg);
+
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-medium); /* 500 — observed on all three shapes */
+  white-space: nowrap;
+  text-decoration: none;
+  user-select: none; /* select-none — observed */
+
+  /* Dominant transition in the target: .2s / ease (motion facts). */
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/* The target ships 8 prefers-reduced-motion rules; honour the same contract. */
+@media (prefers-reduced-motion: reduce) {
+  .ds .ds-badge {
+    transition: none;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+ * 2. STYLE VARIANTS (how the intent is painted)
+ * -------------------------------------------------------------------------- */
+
+/* SOLID — hue/intent at full strength, inverted foreground.
+ * Utilities: .bg-kumo-badge-{hue} -> var(--color-kumo-badge-{hue})
+ *            .text-kumo-badge-inverted -> var(--text-color-kumo-badge-inverted)
+ * PRESCRIPTIVE pairing: the two utilities exist but are not co-observed. */
+.ds .ds-badge--solid {
+  --ds-badge-bg: var(--ds-badge-accent);
+  --ds-badge-fg: var(--ds-badge-on-solid);
+  --ds-badge-border: transparent;
+}
+
+/* SUBTLE — tinted background, darkened/lightened foreground of the same family.
+ * OBSERVED (billing.html, info intent):
+ *   .bg-kumo-info-tint -> var(--color-kumo-info-tint)
+ *   .text-kumo-info    -> var(--text-color-kumo-info)
+ * This is the recommended default for status. */
+.ds .ds-badge--subtle {
+  --ds-badge-bg: var(--ds-badge-tint);
+  --ds-badge-fg: var(--ds-badge-on-tint);
+  --ds-badge-border: transparent;
+}
+
+/* OUTLINE — transparent fill, hue on both border and text.
+ * Utilities: .border-kumo-badge-neutral, .border-[var(--color-kumo-badge-orange)]
+ *            .text-kumo-badge-{blue,green,orange,purple,teal} -> the HUE var
+ *            (note: for these the *text* color token IS --color-kumo-badge-*). */
+.ds .ds-badge--outline {
+  --ds-badge-bg: transparent;
+  --ds-badge-fg: var(--ds-badge-accent);
+  --ds-badge-border: var(--ds-badge-accent);
+}
+
+/* DASHED — the lifecycle badge. OBSERVED, 136/136 badge instances.
+ * Neutral hairline border, strong text, no fill. Reserved for product-maturity
+ * labels (Beta / New / Alpha), NOT for status. */
+.ds .ds-badge--dashed {
+  --ds-badge-bg: transparent;
+  --ds-badge-fg: var(--text-color-kumo-strong);
+  --ds-badge-border: var(--color-kumo-line);
+  --ds-badge-border-style: dashed;
+}
+
+/* ELEVATED — the dot status badge. OBSERVED (members.html).
+ * Control-surface fill + 1px hairline ring + xs shadow; the COLOR lives in the
+ * dot, not the chip, so the chip stays legible against any table row.
+ * Source note: this instance hardcoded `bg-white dark:bg-neutral-900` and
+ * `ring-black/10 dark:ring-white/20`; those resolve to --color-kumo-control and
+ * (in light) --color-kumo-line, so we route them through the tokens instead. */
+.ds .ds-badge--elevated {
+  --ds-badge-bg: var(--color-kumo-control);
+  --ds-badge-fg: var(--text-color-kumo-default);
+  --ds-badge-border: transparent;
+  box-shadow:
+    0 0 0 1px var(--color-kumo-line),
+    0 1px 2px 0 var(--color-kumo-shadow-drop);
+}
+
+/* INVERTED — max-contrast chip (near-black on light, near-white on dark).
+ * Utilities: .bg-kumo-badge-inverted + .text-kumo-badge-inverted.
+ * Both sides of the pair flip per theme, so contrast is preserved automatically. */
+.ds .ds-badge--inverted {
+  --ds-badge-bg: var(--color-kumo-badge-inverted);
+  --ds-badge-fg: var(--text-color-kumo-badge-inverted);
+  --ds-badge-border: transparent;
+}
+
+/* -----------------------------------------------------------------------------
+ * 3. INTENTS
+ * 3a. STATUS intents — semantic. Fully token-backed (solid + tint + on-tint).
+ *     Only `info` is observed on a badge; the rest are PRESCRIPTIVE usage of
+ *     exact, existing tokens.
+ * -------------------------------------------------------------------------- */
+
+.ds .ds-badge--success {
+  --ds-badge-accent: var(--color-kumo-success);
+  --ds-badge-tint: var(--color-kumo-success-tint);
+  --ds-badge-on-tint: var(--text-color-kumo-success);
+}
+
+.ds .ds-badge--warning {
+  --ds-badge-accent: var(--color-kumo-warning);
+  --ds-badge-tint: var(--color-kumo-warning-tint);
+  --ds-badge-on-tint: var(--text-color-kumo-warning);
+}
+
+.ds .ds-badge--error, /* alias — the target names this intent "danger" */
+.ds .ds-badge--danger {
+  --ds-badge-accent: var(--color-kumo-danger);
+  --ds-badge-tint: var(--color-kumo-danger-tint);
+  --ds-badge-on-tint: var(--text-color-kumo-danger);
+}
+
+/* OBSERVED as a subtle pill in billing.html. */
+.ds .ds-badge--info {
+  --ds-badge-accent: var(--color-kumo-info);
+  --ds-badge-tint: var(--color-kumo-info-tint);
+  --ds-badge-on-tint: var(--text-color-kumo-info);
+}
+
+.ds .ds-badge--neutral {
+  --ds-badge-accent: var(--color-kumo-badge-neutral);
+  --ds-badge-tint: color-mix(in oklab, var(--color-kumo-badge-neutral) 15%, transparent);
+  --ds-badge-on-tint: var(--text-color-kumo-badge-neutral-subtle);
+}
+
+/* -----------------------------------------------------------------------------
+ * 3b. HUE intents — decorative/categorical (8 hues). Use for taxonomy
+ *     (plan tier, product area, region), NOT for status: a hue carries no
+ *     agreed meaning and does not survive a colour-blind reading.
+ *
+ *     TOKEN GAP — subtle BACKGROUNDS do not exist. There is no
+ *     --color-kumo-badge-*-subtle family: ../tokens/colors.css defines none of
+ *     them, and across the whole capture (../../capture/static/*.css,
+ *     ../../capture/_classes.json, ../../capture/computed-tokens.json)
+ *     exactly ONE such name is even mentioned —
+ *     --color-kumo-badge-orange-subtle, and only as the target of a dangling
+ *     `.bg-[var(--color-kumo-badge-orange-subtle)]` utility that resolves to
+ *     nothing. The other six (blue, green, neutral, purple, red, teal) are
+ *     mentioned nowhere at all. So we never reference any of those names: the
+ *     tint is DERIVED here, color-mix(in oklab, <hue> 15%, transparent). 15% is
+ *     the mid-point of the alpha ramp the target actually compiles for its
+ *     status intents (bg-kumo-danger/5, /10, /15, /20); the badge hues compile
+ *     no alpha variants at all, so the derivation is ours.
+ *
+ *     TOKEN GAP — subtle FOREGROUNDS exist for three hues only.
+ *     ../tokens/colors.css defines exactly
+ *     --text-color-kumo-badge-{neutral,orange,teal}-subtle (all three theme-
+ *     paired). Those three intents use them. The other four (blue, green,
+ *     purple, red) have no such token, so their on-tint is the hue itself —
+ *     legible on a 15% wash of the same hue, and no phantom name is introduced.
+ * -------------------------------------------------------------------------- */
+
+.ds .ds-badge--blue {
+  --ds-badge-accent: var(--color-kumo-badge-blue);
+  --ds-badge-tint: color-mix(in oklab, var(--color-kumo-badge-blue) 15%, transparent);
+  --ds-badge-on-tint: var(--color-kumo-badge-blue);
+}
+
+.ds .ds-badge--green {
+  --ds-badge-accent: var(--color-kumo-badge-green);
+  --ds-badge-tint: color-mix(in oklab, var(--color-kumo-badge-green) 15%, transparent);
+  --ds-badge-on-tint: var(--color-kumo-badge-green);
+}
+
+/* orange, teal and neutral are the three hues with a real subtle FOREGROUND
+ * token; the background is still derived, like every other hue. */
+.ds .ds-badge--orange {
+  --ds-badge-accent: var(--color-kumo-badge-orange);
+  --ds-badge-tint: color-mix(in oklab, var(--color-kumo-badge-orange) 15%, transparent);
+  --ds-badge-on-tint: var(--text-color-kumo-badge-orange-subtle);
+}
+
+.ds .ds-badge--purple {
+  --ds-badge-accent: var(--color-kumo-badge-purple);
+  --ds-badge-tint: color-mix(in oklab, var(--color-kumo-badge-purple) 15%, transparent);
+  --ds-badge-on-tint: var(--color-kumo-badge-purple);
+}
+
+.ds .ds-badge--red {
+  --ds-badge-accent: var(--color-kumo-badge-red);
+  --ds-badge-tint: color-mix(in oklab, var(--color-kumo-badge-red) 15%, transparent);
+  --ds-badge-on-tint: var(--color-kumo-badge-red);
+}
+
+.ds .ds-badge--teal {
+  --ds-badge-accent: var(--color-kumo-badge-teal);
+  --ds-badge-tint: color-mix(in oklab, var(--color-kumo-badge-teal) 15%, transparent);
+  --ds-badge-on-tint: var(--text-color-kumo-badge-teal-subtle);
+}
+
+/* -----------------------------------------------------------------------------
+ * 4. SIZES
+ * All three are lifted from real geometry in the capture. `--spacing` is the
+ * target's Tailwind v4 spacing base (.25rem), so calc() keeps us on-scale.
+ * -------------------------------------------------------------------------- */
+
+/* SM — the lifecycle badge. px-1.5 py-0.5, text-[11px]/none.
+ * 11px is an ARBITRARY value in the source (text-[11px]); it is deliberately
+ * NOT on the type scale (--text-xs is 12px). Intrinsic height ~18px. */
+.ds .ds-badge--sm {
+  padding-block: calc(var(--spacing) * 0.5); /* 2px */
+  padding-inline: calc(var(--spacing) * 1.5); /* 6px */
+  font-size: 11px;
+  line-height: 1; /* /none */
+  gap: calc(var(--spacing) * 1); /* 4px */
+}
+
+/* MD — the dot status badge. px-2 py-0.5, text-xs. Intrinsic height ~20px.
+ * This is the default size. */
+.ds .ds-badge--md {
+  padding-block: calc(var(--spacing) * 0.5); /* 2px */
+  padding-inline: calc(var(--spacing) * 2); /* 8px */
+  font-size: var(--text-xs); /* 12px */
+  line-height: 1;
+  gap: calc(var(--spacing) * 1.5); /* 6px */
+}
+
+/* LG — the info pill. Fixed h-6 (24px), px-2.5, text-xs, gap-1.
+ * Use when the badge is interactive (link/button) and needs a real hit target. */
+.ds .ds-badge--lg {
+  height: calc(var(--spacing) * 6); /* 24px */
+  padding-block: 0;
+  padding-inline: calc(var(--spacing) * 2.5); /* 10px */
+  font-size: var(--text-xs); /* 12px */
+  line-height: 1;
+  gap: calc(var(--spacing) * 1); /* 4px */
+}
+
+/* -----------------------------------------------------------------------------
+ * 5. PARTS
+ * -------------------------------------------------------------------------- */
+
+/* DOT — 6px circle (size-1.5). OBSERVED with aria-hidden="true": it is pure
+ * decoration and the text label carries the meaning. Defaults to the intent
+ * accent, so `.ds-badge--elevated.ds-badge--success > .ds-badge__dot` is green.
+ * Source note: the observed instance hardcoded bg-green-500 / dark:bg-green-400
+ * rather than --color-kumo-success; we route it through the token. */
+.ds .ds-badge__dot {
+  flex: none;
+  width: calc(var(--spacing) * 1.5); /* 6px */
+  height: calc(var(--spacing) * 1.5); /* 6px */
+  border-radius: 9999px;
+  background-color: var(--ds-badge-accent);
+}
+
+/* On solid/inverted fills the accent IS the background, so the dot must invert. */
+.ds .ds-badge--solid .ds-badge__dot,
+.ds .ds-badge--inverted .ds-badge__dot {
+  background-color: currentColor;
+}
+
+/* PULSE — for "live"/in-progress status. PRESCRIPTIVE: the target defines only
+ * two keyframes (fadeSlideIn, pulse-sparkline) and neither is on a badge. */
+.ds .ds-badge__dot--pulse {
+  animation: ds-badge-dot-pulse 1.5s ease infinite; /* 1.5s: the target's long-loop duration */
+}
+
+@keyframes ds-badge-dot-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds .ds-badge__dot--pulse {
+    animation: none;
+  }
+}
+
+/* ICON — 12px is the target's dominant icon size (196 of 476 svg uses) and is
+ * exactly what the observed info pill ships. Icons are decorative inside a
+ * labelled badge: mark them aria-hidden. */
+.ds .ds-badge__icon {
+  flex: none; /* shrink-0 — observed */
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+/* REMOVE — dismiss affordance for filter/token chips. PRESCRIPTIVE: no
+ * removable badge appears in the captures. */
+.ds .ds-badge__remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  margin-inline-end: calc(var(--spacing) * -0.5); /* optically re-centre the pill */
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.ds .ds-badge__remove:hover {
+  opacity: 1;
+}
+
+/* -----------------------------------------------------------------------------
+ * 6. STATES
+ * Only interactive badges (a / button) take hover + focus. A static <span>
+ * badge is not focusable and must not advertise affordances it does not have.
+ * -------------------------------------------------------------------------- */
+
+.ds a.ds-badge,
+.ds button.ds-badge {
+  cursor: pointer;
+}
+
+/* HOVER — OBSERVED on the info pill: a 1px INSET ring on hover, not a fill
+ * change, so the pill neither shifts nor bleeds.
+ * Source note: the target's ring-colour utility here points at a custom property
+ * it never defines — it is not in facts.tokens.names, not in ../tokens/colors.css,
+ * and ../foundations/colors.md lists it as a dangling ref that resolves to
+ * nothing. So we do not reproduce that name: we paint the ring with the real
+ * hairline token, which is what the browser was falling back to anyway. If you
+ * want a distinct ring hue, swap in --color-kumo-focus (a real, theme-paired
+ * token) — never reintroduce the phantom one. */
+.ds a.ds-badge:hover,
+.ds button.ds-badge:hover {
+  box-shadow: inset 0 0 0 1px var(--color-kumo-line);
+}
+
+/* The elevated badge already owns box-shadow; strengthen its ring in place
+ * instead of overwriting the drop shadow. */
+.ds a.ds-badge--elevated:hover,
+.ds button.ds-badge--elevated:hover {
+  box-shadow:
+    0 0 0 1px var(--color-kumo-interact),
+    0 1px 2px 0 var(--color-kumo-shadow-drop);
+}
+
+/* FOCUS — OBSERVED control recipe, verbatim in intent:
+ *   outline-none focus-visible:ring-2 focus-visible:ring-kumo-brand
+ * A 2px brand ring with a 2px offset in the surrounding surface colour, so the
+ * ring reads on both a card and a table row. `:focus-visible` only — a mouse
+ * click on a badge link must not paint a ring. */
+.ds .ds-badge:focus {
+  outline: none;
+}
+
+.ds .ds-badge:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-kumo-base),
+    0 0 0 4px var(--color-kumo-brand);
+}
+
+/* DISABLED / inactive. PRESCRIPTIVE (no disabled badge in the captures); the
+ * colour is the target's real inactive text token. */
+.ds .ds-badge:disabled,
+.ds .ds-badge[aria-disabled='true'] {
+  --ds-badge-fg: var(--text-color-kumo-inactive);
+  cursor: not-allowed;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* -----------------------------------------------------------------------------
+ * 7. COUNT / NOTIFICATION BADGE
+ * PRESCRIPTIVE — no numeric count badge exists in the captures. Built from the
+ * same pill + the danger token so it inherits theme switching for free.
+ * -------------------------------------------------------------------------- */
+
+.ds .ds-badge--count {
+  min-width: calc(var(--spacing) * 4); /* 16px — stays circular at 1 digit */
+  height: calc(var(--spacing) * 4);
+  padding-inline: calc(var(--spacing) * 1);
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums; /* digits do not jitter as the count ticks */
+}
+
+/* A bare dot for "unread, count unknown". Needs an accessible name on the host. */
+.ds .ds-badge--count-dot {
+  width: calc(var(--spacing) * 2); /* 8px */
+  min-width: 0;
+  height: calc(var(--spacing) * 2);
+  padding: 0;
+}
