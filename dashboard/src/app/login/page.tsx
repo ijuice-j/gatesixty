@@ -25,19 +25,23 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-full flex-1 items-center justify-center p-8">
-      <div className="w-full max-w-sm text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">GateSixty</h1>
-        <p className="mt-2 text-sm text-neutral-400">
-          Review what you actually did.
-        </p>
-        <button
-          onClick={signInWithGoogle}
-          disabled={loading}
-          className="mt-8 w-full rounded-lg bg-white px-4 py-3 text-sm font-medium text-black transition hover:bg-neutral-200 disabled:opacity-50"
-        >
-          {loading ? "Redirecting…" : "Continue with Google"}
-        </button>
+    <main className="flex min-h-screen items-center justify-center p-8">
+      <div className="ds-card ds-card--elevated w-full max-w-sm">
+        <div className="ds-card__body text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">GateSixty</h1>
+          <p className="mt-2 text-sm text-[var(--text-color-kumo-subtle)]">
+            Review what you actually did.
+          </p>
+          {/* emphasis = the blue action surface. NOT the Cloudflare orange — that is a
+              text-only token (--text-color-kumo-brand) and must never fill a button. */}
+          <button
+            onClick={signInWithGoogle}
+            disabled={loading}
+            className="ds-btn ds-btn--emphasis ds-btn--lg ds-btn--block mt-8"
+          >
+            {loading ? "Redirecting…" : "Continue with Google"}
+          </button>
+        </div>
       </div>
     </main>
   );

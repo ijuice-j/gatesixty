@@ -1,0 +1,1005 @@
+/* =============================================================================
+ * cloudflare-dashboard — FORM CONTROLS
+ * Re-authored recipes. Every value below references a token var from
+ * ../tokens/colors.css (kumo token layer) or the Tailwind v4 theme layer
+ * (--spacing / --radius-* / --text-*), which the target emits alongside them.
+ *
+ * PROVENANCE
+ *   Target classified as `utility-compiled` (classification.json) — the values
+ *   live in compiled Tailwind utilities on the elements, not in named component
+ *   classes. Each recipe below is transcribed from the utility list observed on
+ *   the real rendered element plus the compiled rule that utility resolves to.
+ *
+ * OBSERVED (grounded in capture/*.html):
+ *   - text input inside an input-group wrapper  .................. 4 instances
+ *   - input-group addon (leading icon slot)  ..................... 4 instances
+ *   - Select trigger (role=combobox, data-kumo-component="Select") 3 instances
+ *   - field stack wrapper (`grid gap-2`)  ........................ observed
+ *   - invalid hook (compiled rule present, no invalid instance rendered)
+ *
+ * PRESCRIPTIVE (NOT observed anywhere in the capture — see forms.md):
+ *   - textarea, checkbox, radio, switch, visible label, helper, error text,
+ *     readonly. facts.json's checkbox counts are OneTrust cookie-consent
+ *     widgets (.ot-switch / .category-switch-handler), NOT this design system.
+ *   Prescriptive blocks are marked `PRESCRIPTIVE` and use only tokens that the
+ *   target already ships. They are extrapolations, not evidence.
+ *
+ * Scope: every rule is authored under `.ds` (scope-components.js contract).
+ * Theming: light/dark switch automatically via :root / [data-mode=dark].
+ *          Never hardcode a per-theme value — just use the vars.
+ * ========================================================================== */
+
+
+/* -----------------------------------------------------------------------------
+ * 0. Local primitives
+ * Shared geometry + the two composite box-shadows, so every control rings and
+ * elevates identically. These are local aliases over real tokens, not new
+ * tokens. Redefine any of them on a subtree to retheme the whole form family.
+ * -------------------------------------------------------------------------- */
+.ds {
+  /* Geometry — transcribed from the utilities on the real control:
+   * `h-9 rounded-lg px-3 text-base gap-1.5`  (input-group + Select trigger). */
+  --ds-field-height: calc(var(--spacing, 0.25rem) * 9);   /* h-9  → 36px      */
+  --ds-field-radius: var(--radius-lg, 0.5rem);            /* rounded-lg → 8px */
+  --ds-field-pad-x: calc(var(--spacing, 0.25rem) * 3);    /* px-3 → 12px      */
+  --ds-field-gap: calc(var(--spacing, 0.25rem) * 1.5);    /* gap-1.5 → 6px    */
+
+  /* Ring widths — `ring` = 1px at rest, `focus:ring-[1.5px]` on focus,
+   * `focus-visible:ring-2` for the keyboard-only ring. */
+  --ds-ring-width: 1px;
+  --ds-ring-width-focus: 1.5px;
+  --ds-ring-width-keyboard: 2px;
+
+  /* `shadow-xs`, transcribed verbatim from the compiled rule:
+   *   .shadow-xs { --tw-shadow: 0 1px 2px 0 #0000000d }
+   * NOTE: the target used Tailwind's built-in shadow colour here rather than
+   * its own --color-kumo-shadow-drop token. Preserved as-is for fidelity;
+   * swap --ds-field-shadow-color to the token if you want theme-aware depth. */
+  --ds-field-shadow-color: #0000000d;
+  --ds-field-shadow: 0 1px 2px 0 var(--ds-field-shadow-color);
+
+  /* Motion — `transition-colors` resolves to the Tailwind defaults the target
+   * ships: --default-transition-duration .1s, timing cubic-bezier(.4,0,.2,1). */
+  --ds-field-transition-duration: var(--default-transition-duration, 0.1s);
+  --ds-field-transition-easing: var(
+    --default-transition-timing-function,
+    cubic-bezier(0.4, 0, 0.2, 1)
+  );
+}
+
+
+/* -----------------------------------------------------------------------------
+ * 1. Field stack — label + control + helper/error
+ * Observed wrapper around the Select trigger: `grid gap-2` (8px rhythm).
+ * The label / helper / error parts themselves are PRESCRIPTIVE.
+ * -------------------------------------------------------------------------- */
+.ds .ds-field {
+  display: grid;
+  gap: calc(var(--spacing, 0.25rem) * 2); /* gap-2 → 8px — observed */
+}
+
+/* PRESCRIPTIVE. Type role taken from the only label sizing the capture shows
+ * (`label > text-base`, 4 uses ⇒ 14px), weight lifted to medium so the label
+ * out-ranks the value text it sits above. */
+.ds .ds-label {
+  color: var(--text-color-kumo-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);                       /* 14px in this system   */
+  line-height: var(--text-base--line-height);
+  font-weight: var(--font-weight-medium, 500);
+  /* The label is the click target for its control — keep the cursor honest. */
+  cursor: default;
+}
+
+/* PRESCRIPTIVE. The required marker is decorative; the real signal is the
+ * `required` attribute on the control. Never rely on colour alone. */
+.ds .ds-label[data-required]::after {
+  content: "*";
+  margin-inline-start: calc(var(--spacing, 0.25rem) * 1);
+  color: var(--text-color-kumo-danger);
+}
+
+/* PRESCRIPTIVE. Helper text — one step down the scale, subtle role. */
+.ds .ds-helper {
+  color: var(--text-color-kumo-subtle);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);                         /* 13px in this system   */
+  line-height: var(--text-sm--line-height);
+}
+
+/* PRESCRIPTIVE. Error text — same slot as helper, danger role.
+ * Pair with aria-invalid="true" + aria-describedby so it is announced. */
+.ds .ds-error {
+  color: var(--text-color-kumo-danger);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+
+
+/* -----------------------------------------------------------------------------
+ * 2. Text input — the base control  [OBSERVED]
+ *
+ * Transcribed from the rendered input-group wrapper:
+ *   relative cursor-text border-0 bg-kumo-control text-kumo-default
+ *   ring ring-kumo-line kumo-input-placeholder h-9 rounded-lg text-base
+ *   shadow-xs overflow-hidden
+ *   focus-within:ring-kumo-focus/50 focus-within:ring-[1.5px]
+ *   has-[input[aria-invalid=true]]:ring-kumo-danger
+ *   data-[disabled]:pointer-events-none data-[disabled]:opacity-50
+ *
+ * The ring is drawn as an OUTSET box-shadow (Tailwind `ring`, not `border`) —
+ * that is why the control has `border-0`: the ring never affects layout, so the
+ * 1px → 1.5px focus growth cannot shift the box. Preserve that.
+ * -------------------------------------------------------------------------- */
+.ds .ds-input {
+  /* Box */
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  block-size: var(--ds-field-height);
+  padding-inline: var(--ds-field-pad-x);
+  border: 0;                                          /* ring does the edge   */
+  border-radius: var(--ds-field-radius);
+
+  /* Surface + text */
+  background-color: var(--color-kumo-control);
+  color: var(--text-color-kumo-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+
+  /* Edge (1px) + elevation, in Tailwind's ring-then-shadow order */
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-line),
+    var(--ds-field-shadow);
+
+  outline: none;                                      /* ring is the indicator */
+  text-overflow: ellipsis;
+  transition:
+    box-shadow var(--ds-field-transition-duration) var(--ds-field-transition-easing),
+    background-color var(--ds-field-transition-duration) var(--ds-field-transition-easing),
+    color var(--ds-field-transition-duration) var(--ds-field-transition-easing);
+}
+
+/* Placeholder — from the compiled custom class:
+ *   .kumo-input-placeholder::placeholder { color: var(--text-color-kumo-placeholder) } */
+.ds .ds-input::placeholder {
+  color: var(--text-color-kumo-placeholder);
+  opacity: 1;                                         /* Firefox dims by default */
+}
+
+/* Hover — PRESCRIPTIVE for the text input.
+ * The rendered input-group carries NO hover variant. This mirrors the system's
+ * own control-hover idiom, observed on Button/LinkButton and Select:
+ *   not-disabled:hover:ring-kumo-focus/25
+ * Delete this block if you want byte-exact parity with the target. */
+.ds .ds-input:hover:not(:disabled):not([readonly]) {
+  box-shadow:
+    0 0 0 var(--ds-ring-width)
+      color-mix(in oklab, var(--color-kumo-focus) 25%, transparent),
+    var(--ds-field-shadow);
+}
+
+/* Focus — 1.5px ring in the focus colour at 50% alpha.  [OBSERVED]
+ * --color-kumo-focus is NEUTRAL (near-black in light, near-white in dark),
+ * NOT the brand colour. Do not "fix" this to an accent ring — it is the trait. */
+.ds .ds-input:focus,
+.ds .ds-input:focus-within {
+  box-shadow:
+    0 0 0 var(--ds-ring-width-focus)
+      color-mix(in oklab, var(--color-kumo-focus) 50%, transparent),
+    var(--ds-field-shadow);
+}
+
+/* Keyboard-only focus — 2px brand ring.  [OBSERVED on Select/Button]
+ * Applied here for consistency so keyboard users get the stronger indicator. */
+.ds .ds-input:focus-visible {
+  box-shadow:
+    0 0 0 var(--ds-ring-width-keyboard) var(--color-kumo-brand),
+    var(--ds-field-shadow);
+}
+
+/* Invalid — ring flips to the danger token.  [OBSERVED]
+ * The target's hook is literally `input[aria-invalid=true]`, so the attribute
+ * must be the STRING "true". aria-invalid="false" / absent = valid. */
+.ds .ds-input[aria-invalid="true"] {
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-danger),
+    var(--ds-field-shadow);
+}
+.ds .ds-input[aria-invalid="true"]:focus,
+.ds .ds-input[aria-invalid="true"]:focus-within,
+.ds .ds-input[aria-invalid="true"]:focus-visible {
+  box-shadow:
+    0 0 0 var(--ds-ring-width-focus) var(--color-kumo-danger),
+    var(--ds-field-shadow);
+}
+
+/* Disabled — opacity knock-down + pointer lock.  [OBSERVED]
+ * The markup also carries `disabled:text-kumo-disabled`, but that utility
+ * resolves to NOTHING: neither the class nor a --text-color-kumo-disabled token
+ * exists in the shipped CSS. It is dead. opacity-50 is the real mechanism. */
+.ds .ds-input:disabled,
+.ds .ds-input[data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* Readonly — PRESCRIPTIVE. Not observed. Reads as "real but frozen": full text
+ * contrast (unlike disabled), recessed surface, no interactive ring. */
+.ds .ds-input[readonly] {
+  background-color: var(--color-kumo-recessed);
+  cursor: default;
+}
+.ds .ds-input[readonly]:focus,
+.ds .ds-input[readonly]:focus-within {
+  box-shadow:
+    0 0 0 var(--ds-ring-width-focus)
+      color-mix(in oklab, var(--color-kumo-focus) 50%, transparent),
+    var(--ds-field-shadow);
+}
+
+/* Sizes — all three heights appear in usage.controlHeights (h-8/h-9/h-10).
+ * h-9 (36px) is the default and by far the most used. */
+.ds .ds-input--sm {
+  --ds-field-height: calc(var(--spacing, 0.25rem) * 8);  /* h-8 → 32px */
+  font-size: var(--text-sm);                             /* 13px       */
+  line-height: var(--text-sm--line-height);
+}
+.ds .ds-input--lg {
+  --ds-field-height: calc(var(--spacing, 0.25rem) * 10); /* h-10 → 40px */
+}
+
+
+/* -----------------------------------------------------------------------------
+ * 3. Input group — control + leading/trailing addons  [OBSERVED]
+ *
+ * This is how EVERY text field in the capture is actually built. The wrapper is
+ * a <label data-slot="input-group" data-focus-mode="container"> that owns the
+ * ring, radius, height and surface; the inner <input> is stripped bare
+ * (`ring-0! border-0 bg-transparent rounded-none shadow-none outline-none`)
+ * and just fills the box. Focus is proxied to the wrapper via :focus-within.
+ * -------------------------------------------------------------------------- */
+.ds .ds-input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  block-size: var(--ds-field-height);
+  padding-inline: 0;                                  /* addons own the inset */
+  border: 0;
+  border-radius: var(--ds-field-radius);
+  overflow: hidden;                                   /* clips addons to radius */
+
+  background-color: var(--color-kumo-control);
+  color: var(--text-color-kumo-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-line),
+    var(--ds-field-shadow);
+
+  outline: none;
+  cursor: text;                                       /* whole box focuses input */
+  transition:
+    box-shadow var(--ds-field-transition-duration) var(--ds-field-transition-easing);
+}
+
+/* focus-mode="container": the RING lives on the wrapper, so the inner control
+ * must never draw one of its own. */
+.ds .ds-input-group:focus-within {
+  box-shadow:
+    0 0 0 var(--ds-ring-width-focus)
+      color-mix(in oklab, var(--color-kumo-focus) 50%, transparent),
+    var(--ds-field-shadow);
+}
+
+/* Invalid propagates from the inner control up to the wrapper.  [OBSERVED] */
+.ds .ds-input-group:has(input[aria-invalid="true"]) {
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-danger),
+    var(--ds-field-shadow);
+}
+.ds .ds-input-group:has(input[aria-invalid="true"]):focus-within {
+  box-shadow:
+    0 0 0 var(--ds-ring-width-focus) var(--color-kumo-danger),
+    var(--ds-field-shadow);
+}
+
+/* Disabled.  [OBSERVED] */
+.ds .ds-input-group[data-disabled],
+.ds .ds-input-group:has(input:disabled) {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* The bare inner control. Everything visual is delegated to the wrapper. */
+.ds .ds-input-group .ds-input-group__control {
+  flex: 1 1 auto;
+  min-width: 0;
+  block-size: 100%;
+  padding-inline: var(--ds-field-pad-x);              /* px-3 → 12px */
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  position: relative;
+  z-index: 1;
+}
+.ds .ds-input-group .ds-input-group__control::placeholder {
+  color: var(--text-color-kumo-placeholder);
+  opacity: 1;
+}
+.ds .ds-input-group .ds-input-group__control:focus,
+.ds .ds-input-group .ds-input-group__control:focus-visible {
+  box-shadow: none;                                   /* ring-0! / focus:ring-0! */
+  outline: none;
+}
+
+/* Addon slots. Only the START addon is rendered in the capture (a 18px search
+ * glyph); END and SUFFIX slots exist in the component API — the wrapper's
+ * compiled `has-[[data-slot=input-group-addon-end]]` /
+ * `has-[[data-slot=input-group-suffix]]` variants prove it. */
+.ds .ds-input-group__addon {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--ds-field-gap);                           /* gap-1.5 → 6px */
+  color: var(--text-color-kumo-subtle);
+  font-size: var(--text-base);
+  pointer-events: none;                               /* label click passes through */
+}
+/* …but anything genuinely interactive inside the addon re-arms itself
+ * (`*:pointer-events-auto`) — e.g. a clear button or a unit dropdown. */
+.ds .ds-input-group__addon > * {
+  pointer-events: auto;
+}
+
+.ds .ds-input-group__addon--start {
+  order: -1;                                          /* -order-1 */
+  padding-inline-start: calc(var(--spacing, 0.25rem) * 2); /* pl-2 → 8px */
+  padding-inline-end: 0;
+}
+.ds .ds-input-group__addon--end {
+  padding-inline-start: 0;
+  padding-inline-end: calc(var(--spacing, 0.25rem) * 2);
+}
+
+/* When an addon is present the control tightens toward it, so glyph → text is
+ * one rhythm step (8px) instead of the full 12px gutter. */
+.ds .ds-input-group:has(.ds-input-group__addon--start) .ds-input-group__control {
+  padding-inline-start: calc(var(--spacing, 0.25rem) * 2);
+}
+.ds .ds-input-group:has(.ds-input-group__addon--end) .ds-input-group__control {
+  padding-inline-end: calc(var(--spacing, 0.25rem) * 2);
+}
+
+/* Suffix — an inline, non-shrinking trailer (e.g. ".com", "px"). The compiled
+ * variants shrink-wrap the input to its content so the suffix hugs the value. */
+.ds .ds-input-group__suffix {
+  flex-shrink: 0;
+  color: var(--text-color-kumo-subtle);
+  padding-inline-end: var(--ds-field-pad-x);
+}
+.ds .ds-input-group:has(.ds-input-group__suffix) .ds-input-group__control {
+  field-sizing: content;
+  max-width: 100%;
+  flex-grow: 0;
+  padding-inline-end: 0;
+}
+
+
+/* -----------------------------------------------------------------------------
+ * 4. Textarea  [PRESCRIPTIVE — 0 <textarea> in the capture]
+ * Inherits the text-input skin exactly; only the box behaviour differs.
+ * -------------------------------------------------------------------------- */
+.ds .ds-textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  block-size: auto;                                   /* height is content-led */
+  min-block-size: calc(var(--spacing, 0.25rem) * 20); /* ~80px ≈ 3 rows        */
+  padding-block: calc(var(--spacing, 0.25rem) * 2);   /* py-2 → 8px            */
+  padding-inline: var(--ds-field-pad-x);
+  border: 0;
+  border-radius: var(--ds-field-radius);
+
+  background-color: var(--color-kumo-control);
+  color: var(--text-color-kumo-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal, 1.5);            /* prose, not control    */
+
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-line),
+    var(--ds-field-shadow);
+  outline: none;
+  resize: vertical;                                   /* never lock the handle */
+  field-sizing: content;                              /* grow with the value   */
+  transition:
+    box-shadow var(--ds-field-transition-duration) var(--ds-field-transition-easing);
+}
+.ds .ds-textarea::placeholder {
+  color: var(--text-color-kumo-placeholder);
+  opacity: 1;
+}
+.ds .ds-textarea:focus,
+.ds .ds-textarea:focus-within {
+  box-shadow:
+    0 0 0 var(--ds-ring-width-focus)
+      color-mix(in oklab, var(--color-kumo-focus) 50%, transparent),
+    var(--ds-field-shadow);
+}
+.ds .ds-textarea:focus-visible {
+  box-shadow:
+    0 0 0 var(--ds-ring-width-keyboard) var(--color-kumo-brand),
+    var(--ds-field-shadow);
+}
+.ds .ds-textarea[aria-invalid="true"] {
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-danger),
+    var(--ds-field-shadow);
+}
+.ds .ds-textarea[aria-invalid="true"]:focus {
+  box-shadow:
+    0 0 0 var(--ds-ring-width-focus) var(--color-kumo-danger),
+    var(--ds-field-shadow);
+}
+.ds .ds-textarea:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+.ds .ds-textarea[readonly] {
+  background-color: var(--color-kumo-recessed);
+  cursor: default;
+}
+
+
+/* -----------------------------------------------------------------------------
+ * 5. Select  [OBSERVED — as a custom trigger, never a native <select>]
+ *
+ * Transcribed from the rendered trigger:
+ *   role="combobox" aria-haspopup="listbox" aria-expanded
+ *   data-kumo-component="Select" data-kumo-part="trigger"
+ *   h-9 gap-1.5 rounded-lg px-3 text-base shadow-xs border-0
+ *   bg-kumo-base !text-kumo-default ring ring-kumo-line justify-between
+ *   not-disabled:hover:bg-kumo-tint  data-[state=open]:bg-kumo-base
+ *   focus:ring-kumo-focus/50  focus-visible:ring-2 focus-visible:ring-kumo-brand
+ *   focus-visible:ring-inset
+ *   disabled:cursor-not-allowed disabled:bg-kumo-base/50
+ *   disabled:!text-kumo-default/70
+ *
+ * Note the surface differs from the text input on purpose:
+ *   text input → --color-kumo-control   (a "fill this in" affordance)
+ *   select     → --color-kumo-base      (a "press me" affordance, like Button)
+ * Preserve that split. It is how the system distinguishes entry from choice.
+ * -------------------------------------------------------------------------- */
+.ds .ds-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;                      /* value ⟷ chevron */
+  gap: var(--ds-field-gap);
+  width: 100%;
+  block-size: var(--ds-field-height);
+  padding-inline: var(--ds-field-pad-x);
+  border: 0;
+  border-radius: var(--ds-field-radius);
+
+  background-color: var(--color-kumo-base);
+  color: var(--text-color-kumo-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+  font-weight: var(--font-weight-normal, 400);
+  text-align: start;
+
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-line),
+    var(--ds-field-shadow);
+
+  outline: none;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--ds-field-transition-duration) var(--ds-field-transition-easing),
+    box-shadow var(--ds-field-transition-duration) var(--ds-field-transition-easing),
+    color var(--ds-field-transition-duration) var(--ds-field-transition-easing);
+}
+
+/* Hover — surface tint, ring unchanged.  [OBSERVED] */
+.ds .ds-select:hover:not(:disabled) {
+  background-color: var(--color-kumo-tint);
+}
+
+/* Open — snaps back to the base surface so the trigger reads as "part of" the
+ * popup rather than still-hovered.  [OBSERVED: data-[state=open]:bg-kumo-base] */
+.ds .ds-select[aria-expanded="true"],
+.ds .ds-select[data-state="open"] {
+  background-color: var(--color-kumo-base);
+}
+
+/* Pointer focus — the neutral 50% ring, same as every other control. */
+.ds .ds-select:focus {
+  box-shadow:
+    0 0 0 var(--ds-ring-width-focus)
+      color-mix(in oklab, var(--color-kumo-focus) 50%, transparent),
+    var(--ds-field-shadow);
+}
+
+/* Keyboard focus — 2px brand ring, drawn INSET so it cannot be clipped by an
+ * overflow-hidden ancestor.  [OBSERVED: focus-visible:ring-inset] */
+.ds .ds-select:focus-visible {
+  box-shadow:
+    inset 0 0 0 var(--ds-ring-width-keyboard) var(--color-kumo-brand),
+    var(--ds-field-shadow);
+}
+
+/* Invalid.  [PRESCRIPTIVE — the compiled invalid hook only targets `input`] */
+.ds .ds-select[aria-invalid="true"] {
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-danger),
+    var(--ds-field-shadow);
+}
+
+/* Disabled — note this control DIMS ITS SURFACE rather than using opacity.
+ * [OBSERVED: disabled:bg-kumo-base/50 + disabled:!text-kumo-default/70] */
+.ds .ds-select:disabled,
+.ds .ds-select[data-disabled] {
+  background-color: color-mix(in oklab, var(--color-kumo-base) 50%, transparent);
+  color: color-mix(in oklab, var(--text-color-kumo-default) 70%, transparent);
+  cursor: not-allowed;
+}
+
+/* The selected value. Truncates — a select never reflows the row.  [OBSERVED] */
+.ds .ds-select__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Empty state: same slot, placeholder colour.  [OBSERVED: data-[placeholder]] */
+.ds .ds-select__value[data-placeholder] {
+  color: var(--text-color-kumo-placeholder);
+}
+
+/* Chevron. 16px, fill-style, currentColor, subtle role.  [OBSERVED] */
+.ds .ds-select__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  color: var(--text-color-kumo-subtle);
+}
+.ds .ds-select__icon > svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+/* Sizes — mirror the input. */
+.ds .ds-select--sm {
+  --ds-field-height: calc(var(--spacing, 0.25rem) * 8);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+.ds .ds-select--lg {
+  --ds-field-height: calc(var(--spacing, 0.25rem) * 10);
+}
+
+/* Listbox + options.  [PRESCRIPTIVE — the popup never opened in the capture.]
+ * Surfaces follow the system's elevation tokens; the hover fill reuses the same
+ * --color-kumo-tint the trigger hovers to, so the two read as one surface. */
+.ds .ds-select__listbox {
+  min-width: 100%;
+  padding: calc(var(--spacing, 0.25rem) * 1);
+  border-radius: var(--ds-field-radius);
+  background-color: var(--color-kumo-elevated);
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-line),
+    0 4px 12px var(--color-kumo-shadow-drop);
+  z-index: var(--z-index-modal, 9999);
+}
+.ds .ds-select__option {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-field-gap);
+  padding-block: calc(var(--spacing, 0.25rem) * 1.5);
+  padding-inline: calc(var(--spacing, 0.25rem) * 2);
+  border-radius: var(--radius-md, 0.375rem);
+  color: var(--text-color-kumo-default);
+  font-size: var(--text-base);
+  cursor: pointer;
+}
+.ds .ds-select__option[data-highlighted],
+.ds .ds-select__option:hover {
+  background-color: var(--color-kumo-tint);
+}
+.ds .ds-select__option[aria-selected="true"] {
+  color: var(--text-color-kumo-strong);
+  font-weight: var(--font-weight-medium, 500);
+}
+.ds .ds-select__option[data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+
+/* -----------------------------------------------------------------------------
+ * 6. Checkbox  [PRESCRIPTIVE — no design-system checkbox exists in the capture]
+ *
+ * facts.json reports checkbox: 72 raw / 9 deduped. Every one of them is a
+ * OneTrust cookie-consent widget (.ot-switch, .category-switch-handler,
+ * #onetrust-* container) injected by a third party. NONE is Cloudflare's.
+ * Everything below is therefore an extrapolation built strictly from tokens the
+ * system already ships — treat it as a proposal, not as evidence.
+ *
+ * Design rationale, so the choices are auditable:
+ *   - 16px box  → the system's 4-unit spacing step; centres on a 36px row.
+ *   - radius-sm → the smallest step of the same radius scale the fields use;
+ *                 rounded-lg (8px) on a 16px box would read as a pill.
+ *   - checked fill = --color-kumo-contrast (near-black light / near-white dark).
+ *     This follows the system's own high-contrast-neutral logic — its focus
+ *     token (--color-kumo-focus) is neutral, not branded. Use .ds-checkbox--brand
+ *     if you want the blue --color-kumo-brand fill instead.
+ * -------------------------------------------------------------------------- */
+.ds .ds-checkbox {
+  --ds-check-size: calc(var(--spacing, 0.25rem) * 4);  /* 16px */
+
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--ds-check-size);
+  block-size: var(--ds-check-size);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm, 0.25rem);
+
+  background-color: var(--color-kumo-control);
+  color: transparent;                                  /* the glyph, when checked */
+
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-line);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    background-color var(--ds-field-transition-duration) var(--ds-field-transition-easing),
+    box-shadow var(--ds-field-transition-duration) var(--ds-field-transition-easing),
+    color var(--ds-field-transition-duration) var(--ds-field-transition-easing);
+}
+
+.ds .ds-checkbox:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 var(--ds-ring-width)
+      color-mix(in oklab, var(--color-kumo-focus) 25%, transparent);
+}
+
+.ds .ds-checkbox:focus-visible {
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-line),
+    0 0 0 var(--ds-ring-width-keyboard) var(--color-kumo-brand);
+}
+
+/* Checked / indeterminate share one filled treatment — only the glyph differs. */
+.ds .ds-checkbox:checked,
+.ds .ds-checkbox[data-checked],
+.ds .ds-checkbox:indeterminate,
+.ds .ds-checkbox[data-indeterminate] {
+  background-color: var(--color-kumo-contrast);
+  color: var(--text-color-kumo-inverse);
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-contrast);
+}
+
+/* Brand-filled opt-in. */
+.ds .ds-checkbox--brand:checked,
+.ds .ds-checkbox--brand[data-checked],
+.ds .ds-checkbox--brand:indeterminate,
+.ds .ds-checkbox--brand[data-indeterminate] {
+  background-color: var(--color-kumo-brand);
+  color: var(--color-white, #fff);
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-brand);
+}
+
+/* Glyphs. Rendered as masks so they inherit `color` and need no asset. */
+.ds .ds-checkbox:checked::after,
+.ds .ds-checkbox[data-checked]::after {
+  content: "";
+  inline-size: 10px;
+  block-size: 10px;
+  background-color: currentColor;
+  clip-path: polygon(
+    14% 47%, 0 61%, 39% 100%, 100% 21%, 85% 8%, 37% 71%
+  );
+}
+.ds .ds-checkbox:indeterminate::after,
+.ds .ds-checkbox[data-indeterminate]::after {
+  content: "";
+  inline-size: 8px;
+  block-size: 2px;
+  border-radius: 1px;
+  background-color: currentColor;
+}
+/* An indeterminate box must not also show a tick. */
+.ds .ds-checkbox:indeterminate:checked::after {
+  inline-size: 8px;
+  block-size: 2px;
+  border-radius: 1px;
+  clip-path: none;
+}
+
+.ds .ds-checkbox[aria-invalid="true"] {
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-danger);
+}
+
+.ds .ds-checkbox:disabled,
+.ds .ds-checkbox[data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* Checkbox / radio row: control + its own label, baseline-safe. */
+.ds .ds-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--spacing, 0.25rem) * 2);              /* 8px */
+  cursor: pointer;
+}
+.ds .ds-choice > .ds-checkbox,
+.ds .ds-choice > .ds-radio,
+.ds .ds-choice > .ds-switch {
+  /* Nudge the control onto the first line's optical centre. */
+  margin-block-start: 2px;
+}
+.ds .ds-choice__label {
+  color: var(--text-color-kumo-default);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+}
+.ds .ds-choice__description {
+  display: block;
+  margin-block-start: calc(var(--spacing, 0.25rem) * 0.5);
+  color: var(--text-color-kumo-subtle);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+.ds .ds-choice:has(:disabled) {
+  cursor: not-allowed;
+}
+.ds .ds-choice:has(:disabled) .ds-choice__label,
+.ds .ds-choice:has(:disabled) .ds-choice__description {
+  opacity: 0.5;
+}
+
+
+/* -----------------------------------------------------------------------------
+ * 7. Radio  [PRESCRIPTIVE — radio: 0 in the capture]
+ * Identical to the checkbox but fully round (`rounded-full` is a heavily-used
+ * radius in this system — 162 occurrences) and filled with a centred dot.
+ * -------------------------------------------------------------------------- */
+.ds .ds-radio {
+  --ds-check-size: calc(var(--spacing, 0.25rem) * 4);  /* 16px */
+
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--ds-check-size);
+  block-size: var(--ds-check-size);
+  border: 0;
+  border-radius: 9999px;                               /* rounded-full */
+
+  background-color: var(--color-kumo-control);
+  color: transparent;
+
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-line);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    background-color var(--ds-field-transition-duration) var(--ds-field-transition-easing),
+    box-shadow var(--ds-field-transition-duration) var(--ds-field-transition-easing),
+    color var(--ds-field-transition-duration) var(--ds-field-transition-easing);
+}
+
+.ds .ds-radio:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 var(--ds-ring-width)
+      color-mix(in oklab, var(--color-kumo-focus) 25%, transparent);
+}
+
+.ds .ds-radio:focus-visible {
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-line),
+    0 0 0 var(--ds-ring-width-keyboard) var(--color-kumo-brand);
+}
+
+.ds .ds-radio:checked,
+.ds .ds-radio[data-checked] {
+  background-color: var(--color-kumo-contrast);
+  color: var(--text-color-kumo-inverse);
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-contrast);
+}
+.ds .ds-radio--brand:checked,
+.ds .ds-radio--brand[data-checked] {
+  background-color: var(--color-kumo-brand);
+  color: var(--color-white, #fff);
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-brand);
+}
+
+.ds .ds-radio:checked::after,
+.ds .ds-radio[data-checked]::after {
+  content: "";
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 9999px;
+  background-color: currentColor;
+}
+
+.ds .ds-radio[aria-invalid="true"] {
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-danger);
+}
+.ds .ds-radio:disabled,
+.ds .ds-radio[data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* Radio group. `role="radiogroup"` + a group label are mandatory — a lone radio
+ * is meaningless to a screen reader. */
+.ds .ds-radio-group {
+  display: grid;
+  gap: calc(var(--spacing, 0.25rem) * 2);
+}
+
+
+/* -----------------------------------------------------------------------------
+ * 8. Switch  [PRESCRIPTIVE — switch: 0 in the capture]
+ *
+ * A switch commits IMMEDIATELY; a checkbox stages a change until submit.
+ * Track geometry (28×16) is derived from the spacing scale; `rounded-full`
+ * matches the system's pill radius. The ON track reuses --color-kumo-contrast
+ * for the same reason the checkbox does; --color-kumo-fill is the OFF track
+ * (it is the system's neutral "inert control fill" token).
+ * -------------------------------------------------------------------------- */
+.ds .ds-switch {
+  --ds-switch-w: calc(var(--spacing, 0.25rem) * 7);    /* 28px */
+  --ds-switch-h: calc(var(--spacing, 0.25rem) * 4);    /* 16px */
+  --ds-switch-pad: 2px;
+
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  inline-size: var(--ds-switch-w);
+  block-size: var(--ds-switch-h);
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+
+  background-color: var(--color-kumo-fill);
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-line);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    background-color var(--ds-field-transition-duration) var(--ds-field-transition-easing),
+    box-shadow var(--ds-field-transition-duration) var(--ds-field-transition-easing);
+}
+
+/* The thumb. Transform-only travel so it can be GPU-composited. */
+.ds .ds-switch::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: var(--ds-switch-pad);
+  inline-size: calc(var(--ds-switch-h) - (var(--ds-switch-pad) * 2));
+  block-size: calc(var(--ds-switch-h) - (var(--ds-switch-pad) * 2));
+  border-radius: 9999px;
+  background-color: var(--color-kumo-base);
+  box-shadow: var(--ds-field-shadow);
+  transition: transform var(--ds-field-transition-duration)
+    var(--ds-field-transition-easing);
+}
+
+.ds .ds-switch:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 var(--ds-ring-width)
+      color-mix(in oklab, var(--color-kumo-focus) 25%, transparent);
+}
+
+.ds .ds-switch:focus-visible {
+  box-shadow:
+    0 0 0 var(--ds-ring-width) var(--color-kumo-line),
+    0 0 0 var(--ds-ring-width-keyboard) var(--color-kumo-brand);
+}
+
+.ds .ds-switch:checked,
+.ds .ds-switch[data-checked],
+.ds .ds-switch[aria-checked="true"] {
+  background-color: var(--color-kumo-contrast);
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-contrast);
+}
+.ds .ds-switch--brand:checked,
+.ds .ds-switch--brand[data-checked],
+.ds .ds-switch--brand[aria-checked="true"] {
+  background-color: var(--color-kumo-brand);
+  box-shadow: 0 0 0 var(--ds-ring-width) var(--color-kumo-brand);
+}
+
+.ds .ds-switch:checked::after,
+.ds .ds-switch[data-checked]::after,
+.ds .ds-switch[aria-checked="true"]::after {
+  transform: translateX(
+    calc(var(--ds-switch-w) - var(--ds-switch-h))
+  );
+}
+
+.ds .ds-switch:disabled,
+.ds .ds-switch[data-disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* The capture ships 8 prefers-reduced-motion rules — honour the same contract:
+ * the switch must still land in the right place, it just must not slide. */
+@media (prefers-reduced-motion: reduce) {
+  .ds .ds-switch,
+  .ds .ds-switch::after,
+  .ds .ds-input,
+  .ds .ds-input-group,
+  .ds .ds-textarea,
+  .ds .ds-select,
+  .ds .ds-checkbox,
+  .ds .ds-radio {
+    transition-duration: 0.01ms;
+  }
+}
+
+
+/* -----------------------------------------------------------------------------
+ * 9. Forced-colors / high-contrast
+ * Rings are box-shadows, and box-shadows are DROPPED in forced-colors mode —
+ * every control above would lose its edge. Restore a real border there.
+ * -------------------------------------------------------------------------- */
+@media (forced-colors: active) {
+  .ds .ds-input,
+  .ds .ds-input-group,
+  .ds .ds-textarea,
+  .ds .ds-select,
+  .ds .ds-checkbox,
+  .ds .ds-radio,
+  .ds .ds-switch {
+    border: 1px solid ButtonBorder;
+  }
+  .ds .ds-input:focus-visible,
+  .ds .ds-input-group:focus-within,
+  .ds .ds-textarea:focus-visible,
+  .ds .ds-select:focus-visible,
+  .ds .ds-checkbox:focus-visible,
+  .ds .ds-radio:focus-visible,
+  .ds .ds-switch:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+  .ds .ds-checkbox:checked,
+  .ds .ds-radio:checked,
+  .ds .ds-switch:checked {
+    background-color: Highlight;
+    forced-color-adjust: none;
+  }
+}

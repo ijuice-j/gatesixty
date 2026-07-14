@@ -1,0 +1,26 @@
+/* =============================================================================
+ * cloudflare-dashboard design system
+ * -----------------------------------------------------------------------------
+ * A faithful, cloudflare-dashboard-INSPIRED design system. Not affiliated with,
+ * endorsed by, or sponsored by Cloudflare. For design reference and reuse.
+ *
+ * THE SINGLE FILE YOUR APP IMPORTS.
+ *
+ *   // app/globals.css  (Tailwind CSS v4 + shadcn/ui)
+ *   @import "tailwindcss";
+ *   @import "../design-system/index.css";   ← must come AFTER tailwindcss
+ *
+ * Order matters: the token layer redefines Tailwind theme names (--spacing,
+ * --radius-*, --text-*, --font-*) with the target's real values, and an
+ * unlayered :root only outranks Tailwind's `@layer theme` if it is parsed after.
+ *
+ * Contents:
+ *   tokens/index.css   colors + typography + primitives + the Tailwind v4 /
+ *                      shadcn bridge (@theme inline)
+ *   components.css     the eight `.ds`-scoped component recipe files
+ *
+ * See README.md for adoption, theming, font swapping and the token-naming primer.
+ * ========================================================================== */
+
+@import "./tokens/index.css";
+@import "./components.css";

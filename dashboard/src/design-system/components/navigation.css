@@ -1,0 +1,1108 @@
+/* =============================================================================
+ * cloudflare-dashboard — NAVIGATION
+ * Sidebar nav · Top header / app shell · Breadcrumbs
+ *
+ * Re-authored from the deterministic mines. Nothing here is copied from the
+ * source's compiled stylesheet; every value is either
+ *   (a) a token var()  — tokens/colors.css, tokens/typography.css, tokens.json
+ *   (b) a mined source variable (--header-height, --sidebar-*, --spacing,
+ *       --radius-lg, --text-*, --font-weight-*) resolved in computed-tokens.json
+ *   (c) arithmetic on (b) — e.g. calc(var(--spacing) * 8.5) === 34px
+ *
+ * PROVENANCE NOTE — classification.json ranks this target `utility-compiled`
+ * (score 1.0) with computedStyleMandatory:true. The source ships NO named
+ * spacing/elevation/motion tokens (facts.json → tokens.groups = color 38,
+ * text 16, tw 3, lightningcss 2). Spacing therefore derives from the single
+ * mined generator `--spacing: .25rem`, exactly as foundations/spacing-layout.md
+ * documents. Colors are never inlined — always var(--color-kumo-*) /
+ * var(--text-color-kumo-*).
+ *
+ * SCOPE — intended root is `.ds`. Selectors below are authored bare (`.ds-*`)
+ * so the deterministic `scope-components.js` pass can prefix them to
+ * `.ds .ds-*` without double-prefixing. Nothing here is a bare element
+ * selector, so the file is inert until a `.ds` ancestor exists.
+ *
+ * THEME — light/dark switch automatically via the token layer's own selectors
+ * (`:root`, `[data-mode=dark]`). The only theme-aware rule in this file is a
+ * token *remap* (not a value) that the source itself performs on the sidebar's
+ * active surface — see §2.1.
+ * ========================================================================== */
+
+/* =============================================================================
+ * §1 — SHELL SCALE (component-scoped variables)
+ *
+ * MINED, value-exact:
+ *   --header-height          58px          :root (source)
+ *   --sidebar-width          16.25rem      inline on [data-sidebar-wrapper]
+ *   --sidebar-width-icon     57px          inline on [data-sidebar-wrapper]
+ *   --sidebar-animation-duration 250ms     inline on [data-sidebar-wrapper]
+ *   --sidebar-easing         cubic-bezier(0.77, 0, 0.175, 1)
+ *   --sidebar-nav-width      260px         inline on <html>, written by JS to
+ *                                          track the sidebar's LIVE width
+ *                                          (260px expanded → 57px collapsed);
+ *                                          it drives the shell grid column.
+ *   --preview-banner-height  (unset → 0px) offset for the optional preview bar
+ * ========================================================================== */
+
+.ds-app-shell,
+.ds-sidebar-wrapper {
+  /* Re-declared verbatim from the source. Override on the shell root to retheme
+     the whole navigation system — every rule below reads through these. */
+  --header-height: 58px;
+  --sidebar-width: 16.25rem;              /* 260px — expanded rail */
+  --sidebar-width-icon: 57px;             /* collapsed icon rail   */
+  --sidebar-animation-duration: 250ms;
+  --sidebar-easing: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* =============================================================================
+ * §2 — APP SHELL
+ *
+ * Anatomy (post-render DOM, home-overview.html):
+ *
+ *   .ds-app-shell                       grid: [sidebar rail] 1fr
+ *   ├── .ds-sidebar-wrapper             sticky, h-screen, z-50
+ *   │   └── .ds-sidebar   <aside>       the collapsible nav
+ *   └── .ds-app-shell__column           min-w-0 flex column
+ *       ├── .ds-app-header  <header>    58px, sticky, hairline bottom
+ *       ├── .ds-app-shell__banner       optional promo/banner slot (z-19)
+ *       ├── .ds-app-shell__main <main>  page content
+ *       └── .ds-app-shell__panel        optional right drawer (450px, z-1150)
+ *
+ * The shell is a GRID, not a flex row: the first column is sized by
+ * --sidebar-nav-width and *animates* between 260px and 57px, so main content
+ * reflows in lockstep with the rail. The sidebar itself is sticky inside that
+ * column and can overflow it (see §3.9 peek).
+ * ========================================================================== */
+
+.ds-app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-nav-width, var(--sidebar-width-icon)) 1fr;
+  grid-template-rows: 1fr;
+  align-content: start;
+  min-height: 100vh;
+
+  /* The rail width is the ONLY animated shell property. */
+  transition: grid-template-columns var(--sidebar-animation-duration) var(--sidebar-easing);
+  will-change: grid-template-columns;
+}
+
+.ds-app-shell__column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;                            /* lets long tables/breadcrumbs truncate */
+  min-height: calc(100vh - var(--header-height));
+  /* Animates when the right-hand panel (§2.4) opens. */
+  transition: margin-right 300ms var(--ease-in-out, cubic-bezier(.4, 0, .2, 1));
+}
+
+/* ── §2.1 Top header ─────────────────────────────────────────────────────── */
+
+.ds-app-header {
+  position: sticky;
+  top: var(--preview-banner-height, 0px);
+  z-index: 20;
+
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  height: var(--header-height);            /* 58px */
+  padding-inline: calc(var(--spacing) * 4); /* 16px */
+
+  background-color: var(--color-kumo-canvas);
+  border-bottom: 1px solid var(--color-kumo-line);
+}
+
+/* Right-aligned action cluster: Ask AI · Support · user menu.
+   The controls themselves are ghost Buttons — see components/buttons.* .
+   Observed heights: h-8 (32px) for labelled actions, size-8 for the icon-only
+   user menu. */
+.ds-app-header__actions {
+  margin-left: auto;
+  display: flex;
+  gap: calc(var(--spacing) * 1);           /* 4px */
+}
+
+/* The header breadcrumb is mounted hidden and fades/slides in once the page
+   title is known (source: `transition-all duration-250 opacity-0 translate-y-1`,
+   and keyframe `fadeSlideIn` in motion-data.json). */
+.ds-app-header__crumb-slot {
+  opacity: 0;
+  transform: translateY(calc(var(--spacing) * 1));
+  transition: opacity 250ms, transform 250ms;
+}
+.ds-app-header__crumb-slot[data-ready="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── §2.2 Banner slot ────────────────────────────────────────────────────── */
+/* Sits between header and <main>; z-19 keeps it *under* the header (z-20). */
+.ds-app-shell__banner {
+  position: relative;
+  z-index: 19;
+  min-height: calc(var(--spacing) * 21);   /* 84px */
+  padding-bottom: calc(var(--spacing) * 2);
+}
+
+/* ── §2.3 Main + page container ──────────────────────────────────────────── */
+
+.ds-app-shell__main {
+  width: 100%;
+  height: 100%;
+  flex-grow: 1;
+  background-color: var(--color-kumo-canvas);
+}
+
+/* Every captured page wraps its content in this container. */
+.ds-app-shell__container {
+  container-type: inline-size;
+  margin-inline: auto;
+  width: 100%;
+  max-width: 1400px;                       /* observed literal, not a token */
+  padding-inline: calc(var(--spacing) * 6);  /* 24px */
+}
+@media (width >= 48rem) {                  /* md — 768px */
+  .ds-app-shell__container { padding-inline: calc(var(--spacing) * 8); }  /* 32px */
+}
+@media (width >= 64rem) {                  /* lg — 1024px */
+  .ds-app-shell__container { padding-inline: calc(var(--spacing) * 10); } /* 40px */
+}
+
+/* ── §2.4 Right-hand panel (contextual drawer) ───────────────────────────── */
+/* Observed off-screen in every capture: 450px, translateX(100%), z-1150.
+   Opening it sets margin-right on .ds-app-shell__column (both animate 300ms). */
+.ds-app-shell__panel {
+  position: fixed;
+  right: 0;
+  top: var(--preview-banner-height, 0px);
+  z-index: 1150;
+
+  display: flex;
+  flex-direction: column;
+  width: 450px;
+  height: calc(100vh - var(--preview-banner-height, 0px));
+
+  background-color: var(--color-kumo-overlay);
+  border-left: 1px solid var(--color-kumo-line);
+
+  transform: translateX(100%);
+  transition: width 300ms var(--ease-in-out, cubic-bezier(.4, 0, .2, 1)),
+              transform 300ms var(--ease-in-out, cubic-bezier(.4, 0, .2, 1));
+}
+.ds-app-shell__panel[data-state="open"] { transform: translateX(0); }
+
+/* =============================================================================
+ * §3 — SIDEBAR
+ *
+ * Anatomy (data-* attributes are the source's own; keep them — they ARE the
+ * state machine and they line up 1:1 with shadcn/ui's Sidebar):
+ *
+ *   [data-sidebar-wrapper]  [data-state] [data-side]
+ *   └── <aside> .ds-sidebar [data-state] [data-side] [data-variant] [data-collapsible]
+ *       └── .ds-sidebar__container   (surface + hairline + width animation)
+ *           ├── .ds-sidebar__peek-zone
+ *           │   ├── .ds-sidebar__header      58px — logo + account name
+ *           │   └── <nav> .ds-sidebar__nav
+ *           │       └── .ds-sidebar__views   (account ⇄ zone slider)
+ *           │           └── .ds-sidebar__view
+ *           │               └── .ds-sidebar__content  (scroll viewport)
+ *           │                   ├── .ds-sidebar__search      (⌘K trigger)
+ *           │                   ├── .ds-sidebar__menu        (top-level)
+ *           │                   ├── .ds-sidebar__group       (+ group-label)
+ *           │                   └── .ds-sidebar__separator
+ *           └── .ds-sidebar__footer   48px — collapse trigger
+ *
+ * Observed states:  data-state = expanded | collapsed
+ *                   data-side = left            (right: PRESCRIPTIVE)
+ *                   data-variant = sidebar      (inset: API-present, see §3.10)
+ *                   data-collapsible = icon     (offcanvas/none: PRESCRIPTIVE)
+ * ========================================================================== */
+
+/* ── §3.1 Surface tokens ─────────────────────────────────────────────────── */
+/* The wrapper declares DEFAULTS; the <aside> overrides them. Both are verbatim
+   from the source, and this two-level shape is deliberate: a second sidebar
+   instance (e.g. a mobile sheet) inherits the wrapper defaults instead. */
+
+.ds-sidebar-wrapper {
+  --sidebar-bg: var(--color-kumo-base);
+  --sidebar-active-bg: var(--color-kumo-tint);
+
+  position: sticky;
+  top: 0;
+  z-index: 50;
+
+  isolation: isolate;                      /* contains the peek stacking context */
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  min-height: 100svh;
+}
+
+.ds-sidebar {
+  /* The real sidebar surface: canvas, i.e. the SAME surface as <main> and the
+     header. Separation is done with hairlines, not with a contrasting panel. */
+  --sidebar-bg: var(--color-kumo-canvas);
+  --sidebar-active-bg: var(--color-kumo-recessed);
+
+  position: relative;
+  height: 100%;
+  flex: 0 0 auto;
+  width: var(--sidebar-width);
+  overflow: visible;                       /* required for peek (§3.9) */
+
+  transition: width var(--sidebar-animation-duration) var(--sidebar-easing);
+}
+
+/* Token REMAP (not a hardcoded value) — the source swaps the active surface in
+   dark mode because `recessed` reads as a hole on a near-black canvas.
+   `[data-mode=dark]` is the source selector; `.dark` is the next-themes one. */
+[data-mode="dark"] .ds-sidebar,
+.dark .ds-sidebar {
+  --sidebar-active-bg: var(--color-kumo-control);
+}
+
+.ds-sidebar[data-state="collapsed"] { width: var(--sidebar-width-icon); }
+
+/* ── §3.2 Container ──────────────────────────────────────────────────────── */
+
+.ds-sidebar__container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: var(--sidebar-width);
+  min-width: 0;
+
+  overflow: hidden;                        /* clips labels as the rail narrows */
+  white-space: nowrap;
+
+  background-color: var(--sidebar-bg);
+  color: var(--text-color-kumo-default);
+  border-right: 1px solid var(--color-kumo-line);
+
+  transition: width var(--sidebar-animation-duration) var(--sidebar-easing);
+}
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__container {
+  width: var(--sidebar-width-icon);
+  z-index: 1190;                           /* peek layer — above main (§3.9) */
+}
+
+.ds-sidebar__peek-zone {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── §3.3 Sidebar header (brand + account) ───────────────────────────────── */
+
+.ds-sidebar__header {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: calc(var(--spacing) * 1);
+
+  height: var(--header-height);            /* 58px — flush with .ds-app-header */
+  padding-inline: calc(var(--spacing) * 3);/* 12px */
+  overflow: hidden;
+
+  border-bottom: 1px solid var(--color-kumo-line);
+  transition: padding var(--sidebar-animation-duration);
+}
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__header {
+  padding-inline: calc(var(--spacing) * 2); /* 8px */
+}
+
+/* Logo shrinks to 83.3% in the rail (48px mark → 40px) and grows back when
+   expanded. origin-left keeps it pinned to the rail's left gutter. */
+.ds-sidebar__brand {
+  transform-origin: left;
+  transform: scale(1) translateY(calc(var(--spacing) * 0.5));
+  transition: transform var(--sidebar-animation-duration);
+  cursor: pointer;
+}
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__brand {
+  transform: scale(0.833) translateY(calc(var(--spacing) * 0.5));
+}
+
+.ds-sidebar__account {
+  display: block;
+  min-width: 0;
+  flex-grow: 1;
+  padding-inline: calc(var(--spacing) * 3);
+  padding-block: calc(var(--spacing) * 1.5);
+
+  font-size: var(--text-sm);
+  line-height: 1.375;                      /* leading-snug */
+  font-weight: var(--font-weight-medium);
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── §3.4 Nav + scroll viewport ──────────────────────────────────────────── */
+
+.ds-sidebar__nav {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Sliding views: the account view and the zone view sit side by side on a
+   track that translates by -100% when you drill into a zone. */
+.ds-sidebar__views {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  max-width: var(--sidebar-width);
+  overflow: hidden;
+}
+.ds-sidebar__views-track {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex-shrink: 0;
+  transform: translateX(0%);
+  transition: transform var(--sidebar-animation-duration) var(--sidebar-easing);
+}
+.ds-sidebar__views-track[data-view="zone"] { transform: translateX(-100%); }
+
+.ds-sidebar__view {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex-shrink: 0;
+  min-height: 0;
+}
+.ds-sidebar__view[aria-hidden="true"] { pointer-events: none; }
+
+.ds-sidebar__content {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The scrolling viewport. Two details worth keeping:
+   1. the scrollbar is hidden (the rail is too narrow for one), and
+   2. a 24px mask fades content at both ends instead of a hard cut. */
+.ds-sidebar__viewport {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  padding-block: calc(var(--spacing) * 3);   /* 12px */
+  padding-inline: 11px;                      /* collapsed gutter (see §3.11) */
+
+  scrollbar-width: none;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black min(24px, var(--scroll-area-overflow-y-start, 24px)),
+    black calc(100% - min(24px, var(--scroll-area-overflow-y-end, 24px))),
+    transparent 100%
+  );
+
+  transition: padding var(--sidebar-animation-duration);
+}
+.ds-sidebar__viewport::-webkit-scrollbar { display: none; }
+.ds-sidebar:not([data-state="collapsed"]) .ds-sidebar__viewport {
+  padding-inline: calc(var(--spacing) * 3.5); /* 14px when expanded */
+}
+
+/* ── §3.5 Quick-search trigger (⌘K) ──────────────────────────────────────── */
+/* A Button (secondary/outline) that dissolves into a bare icon in the rail. */
+
+.ds-sidebar__search {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+
+  height: calc(var(--spacing) * 8);        /* 32px — the h-8 control size */
+  padding-inline: calc(var(--spacing) * 3);
+  gap: calc(var(--spacing) * 2);
+
+  font-size: var(--text-sm);
+  font-weight: 400;
+  text-align: left;
+
+  color: var(--text-color-kumo-default);
+  background-color: var(--color-kumo-base);
+  border: 0;
+  border-radius: var(--radius-lg);         /* .5rem — the system radius */
+  /* ring-1 (kumo-line) + shadow-xs. The system ships NO shadow token for xs —
+     `0 1px 2px 0 rgb(0 0 0 / .05)` is the compiled value mined in
+     foundations/elevation-motion.md §1.5 (47 uses). It is a literal by
+     necessity, not by choice. */
+  box-shadow: 0 0 0 1px var(--color-kumo-line), 0 1px 2px 0 rgb(0 0 0 / 0.05);
+
+  cursor: pointer;
+  overflow-x: clip;
+  transition: color 250ms, background-color 250ms, border-color 250ms, box-shadow 250ms;
+}
+.ds-sidebar__search:hover { background-color: var(--color-kumo-tint); }
+.ds-sidebar__search:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-kumo-brand);
+}
+/* In the rail it loses its ring and shadow and reads as a plain icon button. */
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__search { box-shadow: none; }
+
+.ds-sidebar__search-kbd {
+  margin-left: auto;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: calc(var(--spacing) * 4);   /* text-xs/4 → 16px */
+  color: var(--text-color-kumo-subtle);
+  white-space: nowrap;
+}
+
+/* ── §3.6 Section grouping ───────────────────────────────────────────────── */
+/*
+ * A group = an (optional) label + a menu. The label does double duty:
+ *   EXPANDED  → visible text label, no divider.
+ *   COLLAPSED → label collapses to 0 height (grid-rows 0fr) and a HAIRLINE
+ *               appears in its place, so the rail still reads as sectioned.
+ * The first group in a view gets neither (no leading rule, tighter top margin).
+ */
+
+.ds-sidebar__group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;                                /* gap-y-px — items are near-flush */
+}
+
+.ds-sidebar__group-label {
+  display: grid;
+  grid-template-rows: 1fr;                 /* expanded: label visible */
+  overflow: hidden;
+
+  margin-block: 0;
+  border-bottom: 1px solid transparent;
+
+  transition: grid-template-rows var(--sidebar-animation-duration) var(--sidebar-easing),
+              margin var(--sidebar-animation-duration) var(--sidebar-easing),
+              border-color var(--sidebar-animation-duration) var(--sidebar-easing);
+}
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__group-label {
+  grid-template-rows: 0fr;                 /* collapsed: label → 0 height */
+  margin-block: calc(var(--spacing) * 3);  /* 12px */
+  border-bottom-color: var(--color-kumo-line);  /* …and becomes a divider */
+}
+/* First group: never draw the leading rule. */
+.ds-sidebar__group:first-child .ds-sidebar__group-label,
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__group:first-child .ds-sidebar__group-label {
+  margin-block: 0;
+  border-bottom-color: transparent;
+}
+
+.ds-sidebar__group-label-text {
+  margin-top: calc(var(--spacing) * 4);    /* 16px */
+  margin-bottom: calc(var(--spacing) * 2); /* 8px  */
+  padding-inline: calc(var(--spacing) * 3);
+
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-color-kumo-subtle);
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-sidebar__group:first-child .ds-sidebar__group-label-text {
+  margin-top: calc(var(--spacing) * 2);    /* 8px */
+}
+
+/* Explicit divider (used once, between the product nav and "Manage account"). */
+.ds-sidebar__separator {
+  margin-block: calc(var(--spacing) * 3);
+  padding-inline: calc(var(--spacing) * 2);
+}
+.ds-sidebar__separator > * {
+  border-bottom: 1px solid var(--color-kumo-line);
+}
+
+/* ── §3.7 Menu + menu button (the primary nav item) ──────────────────────── */
+
+.ds-sidebar__menu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  list-style: none;
+}
+
+.ds-sidebar__menu-item { position: relative; }
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__menu-item { overflow: hidden; }
+
+/*
+ * The nav item. ONE size is shipped by the source: data-size="base" (8/8 pages,
+ * zero other values) → min-height 34px. Anything else is prescriptive (§3.12).
+ * Note the item is NOT height-fixed: min-height + py-0 lets a wrapped label grow.
+ */
+.ds-sidebar__menu-button {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: calc(var(--spacing) * 2.5);         /* 10px */
+
+  min-height: calc(var(--spacing) * 8.5);  /* 34px — data-size="base" */
+  padding-block: 0;
+  padding-inline: calc(var(--spacing) * 3);/* 12px */
+
+  font-size: var(--text-sm);               /* 13px */
+  line-height: var(--text-sm--line-height);
+  font-weight: var(--font-weight-medium);  /* 500 */
+  text-decoration: none;
+  text-align: left;
+
+  color: var(--text-color-kumo-default);
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--radius-lg);
+
+  cursor: pointer;
+  outline: none;
+  transition: color var(--sidebar-animation-duration),
+              background-color var(--sidebar-animation-duration),
+              box-shadow var(--sidebar-animation-duration),
+              outline var(--sidebar-animation-duration);
+}
+
+/* Hit-target extender: the 1px inter-item gap would otherwise be a dead zone
+   for the pointer. The ::before is invisible — it only widens the target. */
+.ds-sidebar__menu-button::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block: -1px;
+}
+
+/* STATES — transcribed from the mined class strings, in cascade order. */
+
+/* hover */
+.ds-sidebar__menu-button:hover { background-color: var(--sidebar-active-bg); }
+
+/* active (current route) — a persistent tint. Text weight/colour do NOT change:
+   the surface alone carries "you are here". */
+.ds-sidebar__menu-button[data-active="true"] {
+  background-color: var(--sidebar-active-bg);
+}
+
+/* A parent whose *descendant* is the active item stays transparent, so the
+   highlight is never doubled; it still tints on hover. (Source: the
+   `has-[[data-active]]:bg-transparent` / `has-[[data-active]]:hover:` pair.) */
+.ds-sidebar__menu-button:has([data-active]) { background-color: transparent; }
+.ds-sidebar__menu-button:has([data-active]):hover {
+  background-color: var(--sidebar-active-bg);
+}
+
+/* focus-visible — the source indicates focus with SURFACE + STRONGER TEXT,
+   not a ring. See §3.12 for the ring opt-in and the a11y caveat. */
+.ds-sidebar__menu-button:focus { outline: none; }
+.ds-sidebar__menu-button:focus-visible {
+  color: var(--text-color-kumo-strong);
+  background-color: var(--sidebar-active-bg);
+}
+
+/* disabled — not observed in the sidebar. PRESCRIPTIVE, aligned with Button. */
+.ds-sidebar__menu-button:disabled,
+.ds-sidebar__menu-button[aria-disabled="true"] {
+  color: var(--text-color-kumo-subtle);
+  cursor: not-allowed;
+}
+
+/* Inner row: icon + label (+ chevron). Shifted -3px in the rail so that the
+   16px icon lands dead-centre of the 57px rail (11px gutter + 12px padding
+   − 3px + 8px half-icon = 28px ≈ 57/2). This is why the rail is 57 and not 56. */
+.ds-sidebar__menu-button-content {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  min-width: 0;
+  gap: calc(var(--spacing) * 3);           /* 12px */
+  transform: translateX(0);
+  transition: transform var(--sidebar-animation-duration);
+}
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__menu-button-content {
+  transform: translateX(-3px);
+}
+
+/* 16px nav icon. Deliberately de-emphasised — the icon never carries meaning
+   alone, so it is drawn at 50% and never recolours on active. */
+.ds-sidebar__icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  opacity: 0.5;
+}
+
+.ds-sidebar__label {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+}
+.ds-sidebar__label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Disclosure chevron (12px). Ghosted until the row is hovered; hidden in rail. */
+.ds-sidebar__chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  opacity: 0.4;
+  transition: transform 200ms, rotate 200ms, opacity 200ms;
+}
+.ds-sidebar__menu-button:hover .ds-sidebar__chevron { opacity: 1; }
+.ds-sidebar__menu-button[aria-expanded="true"] .ds-sidebar__chevron { rotate: 180deg; }
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__chevron { display: none; }
+
+/* Status pill on a nav item: Beta / New / Alpha. Dashed hairline + no fill —
+   it must not compete with the item's own active tint. Hidden in the rail. */
+.ds-sidebar__menu-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  padding-inline: calc(var(--spacing) * 1.5); /* 6px */
+  padding-block: calc(var(--spacing) * 0.5);  /* 2px */
+
+  font-size: 11px;
+  line-height: 1;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-color-kumo-strong);
+
+  border: 1px dashed var(--color-kumo-line);
+  border-radius: 9999px;
+  user-select: none;
+}
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__menu-badge { display: none; }
+
+/* ── §3.8 Collapsible sub-menu ───────────────────────────────────────────── */
+/* Height animation via grid-template-rows 0fr → 1fr (no JS measuring). */
+
+.ds-sidebar__collapsible {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--sidebar-animation-duration) var(--sidebar-easing);
+}
+.ds-sidebar__collapsible[data-state="open"] { grid-template-rows: 1fr; }
+.ds-sidebar__collapsible > * { overflow: hidden; }
+
+.ds-sidebar__menu-sub {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+
+  margin: 0;
+  padding: 0;
+  padding-left: calc(var(--spacing) * 7);  /* 28px — indent under the icon */
+  min-width: 0;
+  list-style: none;
+  overflow: hidden;
+}
+
+/* The 1px guide rail that ties a sub-menu back to its parent. Positioned at
+   19px so it sits under the parent icon's centre-ish, inside the 28px indent. */
+.ds-sidebar__menu-sub-rail {
+  position: absolute;
+  left: 19px;
+  inset-block: 1px;
+  z-index: 10;
+  width: 1px;
+  background-color: var(--color-kumo-line);
+}
+
+.ds-sidebar__menu-sub-item { position: relative; }
+
+/* Sub-items are the menu button minus the icon slot, with a faster (150ms)
+   colour-only transition — they never move, so nothing else needs easing. */
+.ds-sidebar__menu-sub-button {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);           /* 8px */
+
+  min-height: calc(var(--spacing) * 8.5);  /* 34px */
+  padding-block: 0;
+  padding-inline: calc(var(--spacing) * 3);
+
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+
+  color: var(--text-color-kumo-default);
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--radius-lg);
+
+  cursor: pointer;
+  outline: none;
+  transition: color 150ms, background-color 150ms;
+}
+.ds-sidebar__menu-sub-button::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block: -1px;
+}
+.ds-sidebar__menu-sub-button:hover { background-color: var(--sidebar-active-bg); }
+.ds-sidebar__menu-sub-button[data-active="true"] { background-color: var(--sidebar-active-bg); }
+.ds-sidebar__menu-sub-button:focus { outline: none; }
+.ds-sidebar__menu-sub-button:focus-visible {
+  color: var(--text-color-kumo-strong);
+  background-color: var(--sidebar-active-bg);
+}
+
+/* ── §3.9 Shortcut rows (Recents / pinned) ───────────────────────────────── */
+/* A two-line sub-item: title + the section it came from, plus a pin affordance
+   that only materialises on hover/focus. `pr-8.5` reserves the pin's column. */
+
+.ds-sidebar__shortcut {
+  position: relative;
+  display: flex;
+  min-height: calc(var(--spacing) * 8.5);  /* 34px */
+  border-radius: var(--radius-lg);
+}
+.ds-sidebar__shortcut:hover { background-color: var(--sidebar-active-bg); }
+
+.ds-sidebar__shortcut-link {
+  flex: 1 1 0;
+  width: 0;                                /* w-0 + flex-1 ⇒ truncation works */
+  display: flex;
+  align-items: center;
+
+  padding-left: 11px;
+  padding-right: calc(var(--spacing) * 8.5); /* 34px — pin gutter */
+  border-radius: var(--radius-lg);
+
+  color: var(--text-color-kumo-default);
+  text-decoration: none;
+  outline: none;
+}
+.ds-sidebar__shortcut-link:hover,
+.ds-sidebar__shortcut-link:active { color: var(--text-color-kumo-strong); }
+.ds-sidebar__shortcut-link:focus-visible {
+  color: var(--text-color-kumo-strong);
+  background-color: var(--sidebar-active-bg);
+}
+
+.ds-sidebar__shortcut-title {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-sidebar__shortcut-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  font-size: 10.5px;                       /* observed literal */
+  font-weight: var(--font-weight-medium);
+  color: var(--text-color-kumo-subtle);
+}
+
+.ds-sidebar__shortcut-pin {
+  position: absolute;
+  right: calc(var(--spacing) * 1.5);
+  top: 50%;
+  transform: translateY(-50%);
+
+  display: grid;
+  place-items: center;
+  width: calc(var(--spacing) * 5.5);       /* 22px */
+  height: calc(var(--spacing) * 9);        /* 36px */
+  padding: 0;
+
+  background: transparent;
+  border: 0;
+  color: var(--text-color-kumo-subtle);
+  cursor: pointer;
+
+  opacity: 0;                              /* revealed by the row's hover */
+  transition: opacity 100ms;
+}
+.ds-sidebar__shortcut:hover .ds-sidebar__shortcut-pin,
+.ds-sidebar__shortcut-pin:hover,
+.ds-sidebar__shortcut-pin:focus-visible { opacity: 0.5; }
+.ds-sidebar__shortcut-pin:hover { color: var(--text-color-kumo-default); }
+
+/* ── §3.10 Footer + collapse trigger ─────────────────────────────────────── */
+/* Sticky to the bottom of the rail. It keeps its own width so that, while the
+   rail animates, the footer's right hairline stays glued to the container edge. */
+
+.ds-sidebar__footer {
+  position: sticky;
+  bottom: 0;
+
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: calc(var(--spacing) * 4);
+
+  height: calc(var(--spacing) * 12);       /* 48px */
+  width: var(--sidebar-width);
+  padding-inline: calc(var(--spacing) * 4);/* 16px expanded */
+
+  background-color: var(--sidebar-bg);
+  background-clip: padding-box;
+  border-top: 1px solid var(--color-kumo-line);
+
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width var(--sidebar-animation-duration) var(--sidebar-easing),
+              padding var(--sidebar-animation-duration) var(--sidebar-easing);
+}
+.ds-sidebar[data-state="collapsed"] .ds-sidebar__footer {
+  width: var(--sidebar-width-icon);
+  padding-inline: 11px;
+  border-right: 1px solid var(--color-kumo-line);
+}
+
+/* The ONE control in the system that focuses with a ring instead of a tint. */
+.ds-sidebar__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  width: calc(var(--spacing) * 8.5);       /* 34px */
+  height: calc(var(--spacing) * 8.5);
+
+  color: var(--text-color-kumo-subtle);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-lg);
+}
+.ds-sidebar__trigger:hover {
+  color: var(--text-color-kumo-default);
+  background-color: var(--sidebar-active-bg);
+}
+.ds-sidebar__trigger:focus { outline: none; }
+.ds-sidebar__trigger:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--color-kumo-brand);  /* ring-2 ring-inset */
+}
+
+/* ── §3.11 Peek (hover-expand while collapsed) ───────────────────────────── */
+/* When collapsed, the container is promoted to z-1190 — above <main> (z-20) and
+   the banner (z-19) — so an expanded peek can overhang the content instead of
+   pushing it. Widen the CONTAINER, never the <aside>: the grid column (and so
+   the page) must not reflow. */
+.ds-sidebar[data-state="collapsed"][data-peek="true"] .ds-sidebar__container {
+  width: var(--sidebar-width);
+  box-shadow: 0 1px 3px 0 var(--color-kumo-shadow-drop);
+}
+
+/* ── §3.12 Variants ──────────────────────────────────────────────────────── */
+
+/* data-variant="sidebar"  — OBSERVED (the only one live in the capture).
+   data-variant="inset"    — API-present: the wrapper carries a
+                             `has-[[data-variant=inset]]` rule that recesses the
+                             shell background so main floats as a card. */
+.ds-sidebar-wrapper:has(.ds-sidebar[data-variant="inset"]) {
+  background-color: var(--color-kumo-recessed);
+}
+
+/* data-side="right" — PRESCRIPTIVE (never observed; the source is left-only). */
+.ds-sidebar[data-side="right"] .ds-sidebar__container {
+  border-right: 0;
+  border-left: 1px solid var(--color-kumo-line);
+}
+
+/* PRESCRIPTIVE opt-in: a real focus ring on nav items. The shipped focus style
+   is background-only, which is invisible to users who cannot perceive a ~2%
+   luminance step. Add this class to the sidebar root to upgrade every item. */
+.ds-sidebar--focus-ring .ds-sidebar__menu-button:focus-visible,
+.ds-sidebar--focus-ring .ds-sidebar__menu-sub-button:focus-visible,
+.ds-sidebar--focus-ring .ds-sidebar__shortcut-link:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--color-kumo-brand);
+}
+
+/* PRESCRIPTIVE size: a denser rail for tool-heavy surfaces. The source ships
+   `base` only (34px); this keeps the same rhythm at 28px. */
+.ds-sidebar__menu-button[data-size="sm"],
+.ds-sidebar__menu-sub-button[data-size="sm"] {
+  min-height: calc(var(--spacing) * 7);    /* 28px */
+  padding-inline: calc(var(--spacing) * 2.5);
+}
+
+/* =============================================================================
+ * §4 — BREADCRUMBS
+ *
+ * Two placements, one recipe:
+ *   .ds-breadcrumbs                  in-page, under the page container
+ *   .ds-breadcrumbs--header          in the sticky header (hidden < 640px)
+ *
+ * Anatomy:  <nav aria-label="breadcrumb">
+ *             <a  .ds-breadcrumbs__link>          Manage Account
+ *             <span .ds-breadcrumbs__separator aria-hidden>  ›
+ *             <span .ds-breadcrumbs__current aria-current="page">  Members
+ *
+ * Colour ladder — link SUBTLE → separator INACTIVE → current DEFAULT+500.
+ * The separator is the palest thing on the row on purpose: it is punctuation.
+ * ========================================================================== */
+
+.ds-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-grow: 1;
+  gap: calc(var(--spacing) * 1);           /* 4px */
+
+  min-width: 0;
+  height: calc(var(--spacing) * 12);       /* 48px */
+  margin-right: calc(var(--spacing) * 4);
+
+  font-size: var(--text-base);             /* 14px — bigger than the nav's 13px */
+  line-height: var(--text-base--line-height);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ds-breadcrumbs__link {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  min-width: 0;
+  max-width: 100%;
+
+  color: var(--text-color-kumo-subtle);
+  text-decoration: none;
+}
+.ds-breadcrumbs__link:hover { color: var(--text-color-kumo-default); }
+.ds-breadcrumbs__link:focus-visible {
+  outline: 2px solid var(--color-kumo-brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* 24px chevron. aria-hidden — it is decoration, and it must never be read out. */
+.ds-breadcrumbs__separator {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-color-kumo-inactive);
+}
+
+.ds-breadcrumbs__current {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  min-width: 0;
+  max-width: 100%;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-color-kumo-default);
+}
+
+/* Every crumb truncates individually — min-width:0 above makes this bite. */
+.ds-breadcrumbs__link > span,
+.ds-breadcrumbs__current > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Optional 16px leading glyph (zone/account icon) on the first crumb. */
+.ds-breadcrumbs__icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+/* Header placement: hidden on phones, where the in-page crumb already shows. */
+.ds-breadcrumbs--header { display: none; }
+@media (width >= 40rem) {                  /* sm — 640px */
+  .ds-breadcrumbs--header { display: flex; }
+}
+
+/* =============================================================================
+ * §5 — RESPONSIVE
+ *
+ * Mined breakpoints (breakpoints-data.json): 640 / 768 / 1024 / 1280 / 1536.
+ * The navigation only uses the first three.
+ *   ≥640 (sm)  header breadcrumb appears
+ *   ≥768 (md)  header action labels appear; container padding 24→32px
+ *  ≥1024 (lg)  container padding 32→40px
+ *
+ * Below 640px the source switches the sidebar to a MOBILE sheet — the class
+ * strings carry `group-data-[mobile=true]/sidebar:*` rules (group labels stay
+ * expanded; transitions off) but no mobile DOM was captured (all shots are
+ * 1920px wide). The sheet geometry below is therefore PRESCRIPTIVE, built from
+ * those mined rules + the observed --sidebar-width.
+ * ========================================================================== */
+
+/* Mobile mode: labels always visible, no width animation (a sheet slides, it
+   does not narrow). Drive it with data-mobile="true" on the sidebar root. */
+.ds-sidebar[data-mobile="true"] .ds-sidebar__group-label {
+  grid-template-rows: 1fr;
+  margin-block: 0;
+  border-bottom-color: transparent;
+  transition: none;
+}
+.ds-sidebar[data-mobile="true"] .ds-sidebar__container,
+.ds-sidebar[data-mobile="true"] .ds-sidebar__footer { transition: none; }
+
+/* PRESCRIPTIVE — off-canvas sheet (< 640px). Render inside a shadcn <Sheet>. */
+@media (width < 40rem) {
+  .ds-app-shell { grid-template-columns: 1fr; }
+  .ds-sidebar-wrapper[data-collapsible="offcanvas"] { position: fixed; inset: 0 auto 0 0; }
+  .ds-sidebar[data-mobile="true"],
+  .ds-sidebar[data-mobile="true"] .ds-sidebar__container { width: var(--sidebar-width); }
+}
+
+/* =============================================================================
+ * §6 — REDUCED MOTION
+ * The source ships 8 prefers-reduced-motion rules and puts `motion-reduce:
+ * transition-none` on every animated nav surface. Honour it globally here.
+ * ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .ds-app-shell,
+  .ds-app-shell__column,
+  .ds-app-shell__panel,
+  .ds-app-header__crumb-slot,
+  .ds-sidebar,
+  .ds-sidebar__container,
+  .ds-sidebar__header,
+  .ds-sidebar__brand,
+  .ds-sidebar__viewport,
+  .ds-sidebar__views-track,
+  .ds-sidebar__group-label,
+  .ds-sidebar__collapsible,
+  .ds-sidebar__menu-button,
+  .ds-sidebar__menu-button-content,
+  .ds-sidebar__menu-sub-button,
+  .ds-sidebar__chevron,
+  .ds-sidebar__footer,
+  .ds-sidebar__search,
+  .ds-sidebar__shortcut-pin {
+    transition: none;
+  }
+}

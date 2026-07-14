@@ -1,0 +1,920 @@
+/* =============================================================================
+ * cloudflare-dashboard — DATA DISPLAY recipes
+ * Tables · Cards/Panels/Surfaces · Lists · Code & Log blocks · Steppers
+ * Avatars · Progress · Skeletons
+ *
+ * Re-authored (NOT copied) from the deterministic capture:
+ *   - capture/_classes.json  → token-per-property mapping
+ *   - capture/facts.json     → counts, observed components, motion, radius scale
+ *   - capture/*.html         → post-render anatomy (members / api-tokens /
+ *                              home-overview / workers-and-pages / audit-log)
+ *
+ * Everything below references var(--token) only. Light/dark/fedramp/kumo themes
+ * switch automatically via the theme selectors in tokens/colors.css
+ * (:root, [data-mode=dark], .theme-fedramp, .theme-kumo) — never hardcode a
+ * per-theme value.
+ *
+ * TARGET TRAITS PRESERVED (from the data, not assumed):
+ *   radius     : --radius-lg (.5rem) is the house radius — `rounded-lg` is used
+ *                946× vs rounded-md 21×. Pills/dots use `rounded-full`.
+ *   elevation  : hairline RING (not a border) in --color-kumo-line, plus a
+ *                1px drop shadow. `ring ring-kumo-line` appears 45×.
+ *   focus ring : focus-visible → 2px ring in --color-kumo-brand (80×), with
+ *                --color-kumo-focus @ 50% on plain :focus (80×).
+ *   accent     : --color-kumo-brand (blue) for focus/selection;
+ *                --text-color-kumo-brand (#f6821f, identical in every theme)
+ *                is the Cloudflare orange used by the progress indicator.
+ *
+ * FALLBACKS: tokens/colors.css emits the Tailwind base scale (--text-*, --radius-*,
+ * --spacing) at :root, so these resolve without any promotion step. The inline
+ * fallback in var(--x, <value>) is still the EXACT value from tokens/colors.css, so
+ * the recipes also survive being imported standalone, without the token layer.
+ * ========================================================================== */
+
+/* -----------------------------------------------------------------------------
+ * 0. Local aliases — the two elevation primitives and the shared focus ring.
+ *    Declared on .ds so every recipe below can compose them.
+ * -------------------------------------------------------------------------- */
+.ds {
+  /* Hairline "edge" ring — the target draws card/table borders as a 1px ring. */
+  --ds-ring-hairline: inset 0 0 0 1px var(--color-kumo-line);
+
+  /* Drop shadows built from the theme-aware shadow tokens. */
+  --ds-shadow-xs: 0 1px 2px 0 var(--color-kumo-shadow-drop);
+  --ds-shadow-sm: 0 1px 2px 0 var(--color-kumo-shadow-drop),
+                  0 0 0 1px var(--color-kumo-shadow-edge);
+  --ds-shadow-md: 0 4px 8px -2px var(--color-kumo-shadow-drop),
+                  0 0 0 1px var(--color-kumo-shadow-edge);
+  --ds-shadow-lg: 0 12px 24px -6px var(--color-kumo-shadow-drop),
+                  0 0 0 1px var(--color-kumo-shadow-edge);
+
+  /* Motion — --default-transition-duration is .1s, easing cubic-bezier(.4,0,.2,1). */
+  --ds-duration: var(--default-transition-duration, .1s);
+  --ds-ease: var(--ease-in-out, cubic-bezier(.4, 0, .2, 1));
+}
+
+/* Shared focus treatment. Transcribed from the observed utility chain:
+ *   focus:ring-kumo-focus/50 focus-visible:ring-2 focus-visible:ring-kumo-brand
+ * Keyboard focus gets the 2px brand ring; pointer focus keeps the softer
+ * --color-kumo-focus @ 50%. */
+.ds :where(.ds-focusable):focus {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-kumo-focus) 50%, transparent);
+}
+.ds :where(.ds-focusable):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-kumo-brand);
+}
+
+
+/* =============================================================================
+ * 1. SURFACES  (OBSERVED)
+ * The target exposes six stacked surface tokens. Depth increases as you move
+ * from canvas (page) → base (card) → elevated (raised) → overlay (menus).
+ * `recessed` goes the other way: a well *below* the base surface.
+ * Source markup tags these with data-surface-color="primary".
+ * ========================================================================== */
+.ds .ds-surface {
+  background-color: var(--color-kumo-base);
+  color: var(--text-color-kumo-default);
+  border-radius: var(--radius-lg, .5rem);
+}
+
+/* Page background — the app canvas sits *behind* every card. */
+.ds .ds-surface--canvas   { background-color: var(--color-kumo-canvas); }
+/* Default card / table / panel surface. */
+.ds .ds-surface--base     { background-color: var(--color-kumo-base); }
+/* Raised surface (e.g. a card resting on another card). */
+.ds .ds-surface--elevated { background-color: var(--color-kumo-elevated); }
+/* Inset well — code blocks, log viewers, empty states. */
+.ds .ds-surface--recessed { background-color: var(--color-kumo-recessed); }
+/* Floating layers — menus, popovers, tooltips. */
+.ds .ds-surface--overlay  { background-color: var(--color-kumo-overlay); }
+/* Form-control surface (inputs, comboboxes) — kept here for completeness. */
+.ds .ds-surface--control  { background-color: var(--color-kumo-control); }
+
+/* --- Elevation ladder -------------------------------------------------------
+ * e0 is the target's most common "card" treatment: a hairline ring and nothing
+ * else. e1 adds the observed `shadow-xs`. e2/e3 extend the ladder for floating
+ * layers using the same two shadow tokens. */
+.ds .ds-elevation-0 { box-shadow: var(--ds-ring-hairline); }
+.ds .ds-elevation-1 { box-shadow: var(--ds-ring-hairline), var(--ds-shadow-xs); }
+.ds .ds-elevation-2 { box-shadow: var(--ds-ring-hairline), var(--ds-shadow-md); }
+.ds .ds-elevation-3 { box-shadow: var(--ds-ring-hairline), var(--ds-shadow-lg); }
+
+
+/* =============================================================================
+ * 2. CARD / PANEL  (OBSERVED)
+ * Dominant recipe in the capture:
+ *   overflow-hidden shadow-xs ring ring-kumo-line bg-kumo-base rounded-lg p-4
+ * A second, flatter variant swaps the ring for a border and uses p-6.
+ * ========================================================================== */
+.ds .ds-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing, .25rem) * 3);          /* gap-3 */
+  padding: calc(var(--spacing, .25rem) * 4);      /* p-4 = 1rem */
+  background-color: var(--color-kumo-base);
+  color: var(--text-color-kumo-default);
+  border-radius: var(--radius-lg, .5rem);
+  box-shadow: var(--ds-ring-hairline), var(--ds-shadow-xs);
+  overflow: hidden;
+}
+
+/* Variant: hairline border instead of a ring, roomier padding (p-6). */
+.ds .ds-card--bordered {
+  padding: calc(var(--spacing, .25rem) * 6);
+  border: 1px solid var(--color-kumo-line);
+  box-shadow: none;
+}
+
+/* Variant: recessed well — for code/log/empty regions nested inside a card. */
+.ds .ds-card--recessed {
+  background-color: var(--color-kumo-recessed);
+  box-shadow: var(--ds-ring-hairline);
+}
+
+/* Variant: raised — a card on top of another card. */
+.ds .ds-card--elevated {
+  background-color: var(--color-kumo-elevated);
+  box-shadow: var(--ds-ring-hairline), var(--ds-shadow-md);
+}
+
+/* Variant: status-tinted cards. The *-tint tokens are the flat-fill pairs that
+ * already carry a theme-correct light/dark value. */
+.ds .ds-card--info    { background-color: var(--color-kumo-info-tint);    }
+.ds .ds-card--success { background-color: var(--color-kumo-success-tint); }
+.ds .ds-card--warning { background-color: var(--color-kumo-warning-tint); }
+.ds .ds-card--danger  { background-color: var(--color-kumo-danger-tint);  }
+
+/* Variant: whole card is a click target (wrap the title link in .ds-card__link). */
+.ds .ds-card--interactive {
+  cursor: pointer;
+  transition: background-color var(--ds-duration) var(--ds-ease),
+              box-shadow var(--ds-duration) var(--ds-ease);
+}
+.ds .ds-card--interactive:hover {
+  background-color: var(--color-kumo-fill-hover);
+}
+.ds .ds-card--interactive:focus-within {
+  box-shadow: 0 0 0 2px var(--color-kumo-brand), var(--ds-shadow-xs);
+}
+
+/* Stretched link: makes the entire card clickable while keeping one real <a>
+ * in the a11y tree. Same `after:absolute after:inset-0` trick the target uses
+ * on its table rows. */
+.ds .ds-card__link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+/* --- Card slots ----------------------------------------------------------- */
+.ds .ds-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(var(--spacing, .25rem) * 2);          /* gap-2 — the house gap */
+}
+.ds .ds-card__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-lg, 16px);                /* h3 > text-lg is the observed pairing */
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--text-color-kumo-strong);
+}
+.ds .ds-card__description {
+  margin: 0;
+  font-size: var(--text-sm, 13px);
+  color: var(--text-color-kumo-subtle);
+  text-wrap: pretty;                              /* the target ships .text-pretty */
+}
+.ds .ds-card__body {
+  font-size: var(--text-base, 14px);
+  color: var(--text-color-kumo-default);
+}
+.ds .ds-card__footer {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing, .25rem) * 2);
+  padding-top: calc(var(--spacing, .25rem) * 3);
+  border-top: 1px solid var(--color-kumo-line);
+}
+
+/* Metric / stat card — numbers get tabular figures so columns line up. */
+.ds .ds-card__metric {
+  font-size: var(--text-3xl, 1.875rem);           /* h1 > text-3xl is the observed pairing */
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--text-color-kumo-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* =============================================================================
+ * 3. TABLE  (OBSERVED — members.html is the canonical instance)
+ *
+ * The target ships TWO table treatments:
+ *
+ *   (a) .ds-table            — the plain table defaults carried on <table>:
+ *                              cells border-b in --color-kumo-fill, p-3,
+ *                              last row's border removed, header on
+ *                              --color-kumo-base.
+ *
+ *   (b) .ds-table--grid      — the interactive data grid. Its rows do NOT paint
+ *                              their own background. Each <td> is `relative`
+ *                              and holds an absolutely-positioned surface layer
+ *                              behind the content (z-index:-10). Hover is driven
+ *                              from the row (`group`), so the whole band lights
+ *                              up as one. The first row's outer cells round
+ *                              their top corners, so the tbody reads as a
+ *                              rounded panel. Row links are "stretched" over the
+ *                              entire row.
+ * ========================================================================== */
+
+/* --- Panel wrapper: ring + radius + horizontal scroll --------------------- */
+.ds .ds-table-panel {
+  width: 100%;
+  border-radius: var(--radius-lg, .5rem);
+  box-shadow: var(--ds-ring-hairline);
+}
+.ds .ds-table-scroll {
+  overflow-x: auto;
+  border-radius: var(--radius-lg, .5rem);
+}
+
+/* --- Base table ----------------------------------------------------------- */
+.ds .ds-table {
+  isolation: isolate;                             /* the target sets `isolate` */
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: var(--text-base, 14px);
+  color: var(--text-color-kumo-default);
+  background-color: var(--color-kumo-base);
+}
+.ds .ds-table--fixed { table-layout: fixed; }
+
+/* Header cells. Observed: text-sm, font-medium, subtle colour, 44px tall. */
+.ds .ds-table th {
+  height: calc(var(--spacing, .25rem) * 11);      /* h-11 = 2.75rem = 44px */
+  padding-inline: calc(var(--spacing, .25rem) * 4);
+  font-size: var(--text-sm, 13px);
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--text-color-kumo-subtle);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-kumo-fill);
+}
+
+/* Body cells. Observed: 48px tall, 16px inline padding, clipped overflow. */
+.ds .ds-table td {
+  height: calc(var(--spacing, .25rem) * 12);      /* h-12 = 3rem = 48px */
+  padding-inline: calc(var(--spacing, .25rem) * 4);
+  overflow: clip;
+  border-bottom: 1px solid var(--color-kumo-fill);
+}
+.ds .ds-table tbody tr:last-child td { border-bottom: 0; }
+
+/* Compact density — the plain-table default before the grid overrides it. */
+.ds .ds-table--compact :is(th, td) {
+  height: auto;
+  padding: calc(var(--spacing, .25rem) * 3);      /* p-3 = .75rem */
+}
+
+/* Sticky header — pin the header to a scrolling body. */
+.ds .ds-table--sticky thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--color-kumo-base);
+}
+
+/* Sortable header. The target wraps the label in a <button>; the caret is
+ * revealed on hover/focus and pinned when the column is active. */
+.ds .ds-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing, .25rem) * 1.5);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm, .25rem);
+}
+.ds .ds-table__sort:hover { color: var(--text-color-kumo-default); }
+.ds .ds-table__sort-icon  { opacity: 0; transition: opacity var(--ds-duration) var(--ds-ease); }
+.ds .ds-table__sort:hover .ds-table__sort-icon,
+.ds .ds-table__sort:focus-visible .ds-table__sort-icon,
+.ds [aria-sort]:not([aria-sort="none"]) .ds-table__sort-icon { opacity: 1; }
+.ds [aria-sort]:not([aria-sort="none"]) { color: var(--text-color-kumo-default); }
+
+/* --- (b) Grid table: layered row surfaces -------------------------------- */
+.ds .ds-table--grid :is(th, td) {
+  position: relative;
+  z-index: 0;
+  border: 0;                                      /* borders move to the surface layer */
+  padding-block: 0;
+}
+.ds .ds-table--grid thead th { background-color: transparent; }
+
+/* The surface layer. One per cell, absolutely positioned behind the content.
+ * Give the row `.ds-table__row` so :hover cascades to every layer at once. */
+.ds .ds-table__row-surface {
+  position: absolute;
+  inset-block: 0;
+  inset-inline: 0;
+  z-index: -10;
+  background-color: var(--color-kumo-base);
+  border-top: 1px solid var(--color-kumo-line);
+  transition: background-color var(--ds-duration) var(--ds-ease);
+}
+
+/* Round the tbody's outer corners by rounding the FIRST row's edge cells, and
+ * pull the side borders out by 1px so they meet the panel ring cleanly. */
+.ds .ds-table--grid tbody tr:first-of-type > td:first-of-type > .ds-table__row-surface {
+  border-start-start-radius: var(--radius-lg, .5rem);
+  border-left: 1px solid var(--color-kumo-line);
+  left: -1px;
+  right: 0;
+}
+.ds .ds-table--grid tbody tr:first-of-type > td:last-of-type > .ds-table__row-surface {
+  border-start-end-radius: var(--radius-lg, .5rem);
+  border-right: 1px solid var(--color-kumo-line);
+  left: 0;
+  right: -1px;
+}
+/* Single-column first row: both edges. */
+.ds .ds-table--grid tbody tr:first-of-type > td:first-of-type:last-of-type > .ds-table__row-surface {
+  inset-inline: -1px;
+}
+
+/* STATES ------------------------------------------------------------------- */
+
+/* Hover — repaint the whole band from the row. */
+.ds .ds-table__row:hover > td > .ds-table__row-surface,
+.ds .ds-table--grid tbody tr:hover > td > .ds-table__row-surface {
+  background-color: var(--color-kumo-fill-hover);
+}
+/* Plain (non-grid) table hover. */
+.ds .ds-table:not(.ds-table--grid) tbody tr:hover {
+  background-color: var(--color-kumo-fill-hover);
+}
+
+/* Selected — brand tint. The target ships bg-kumo-brand/10 and /20; use /10 for
+ * rest and /20 for selected+hover so the two states remain distinguishable. */
+.ds .ds-table__row[aria-selected="true"] > td > .ds-table__row-surface,
+.ds .ds-table--grid tbody tr[aria-selected="true"] > td > .ds-table__row-surface {
+  background-color: color-mix(in oklab, var(--color-kumo-brand) 10%, transparent);
+}
+.ds .ds-table__row[aria-selected="true"]:hover > td > .ds-table__row-surface,
+.ds .ds-table--grid tbody tr[aria-selected="true"]:hover > td > .ds-table__row-surface {
+  background-color: color-mix(in oklab, var(--color-kumo-brand) 20%, transparent);
+}
+.ds .ds-table:not(.ds-table--grid) tbody tr[aria-selected="true"] {
+  background-color: color-mix(in oklab, var(--color-kumo-brand) 10%, transparent);
+}
+
+/* Zebra striping — PRESCRIPTIVE. No odd:/even: utility appears anywhere in the
+ * capture; the target separates rows with hairlines instead. Opt in only if you
+ * genuinely need it, and never combine it with .ds-table--grid (the surface
+ * layers already own the row background). */
+.ds .ds-table--zebra tbody tr:nth-child(even) {
+  background-color: var(--color-kumo-tint);
+}
+
+/* Disabled row. */
+.ds .ds-table__row[aria-disabled="true"] {
+  color: var(--text-color-kumo-inactive);
+  pointer-events: none;
+}
+
+/* Row-level keyboard focus. */
+.ds .ds-table__row:focus-within > td > .ds-table__row-surface {
+  background-color: var(--color-kumo-fill-hover);
+  box-shadow: inset 0 0 0 2px var(--color-kumo-brand);
+}
+
+/* Stretched row link — one <a> covers the whole row. It sits at -z-10 so the
+ * surface layer stays behind it but real controls in other cells stay clickable. */
+.ds .ds-table__row-link {
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds .ds-table__row-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -10;
+}
+
+/* Cell helpers. */
+.ds .ds-table__cell--numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.ds .ds-table__cell--shrink  { width: 1px; white-space: nowrap; }   /* the observed `w-px` idiom */
+.ds .ds-table__cell--muted   { color: var(--text-color-kumo-subtle); }
+.ds .ds-table__cell--empty   { color: var(--text-color-kumo-inactive); }  /* the "—" placeholder */
+
+/* Empty / loading state row. */
+.ds .ds-table__empty {
+  padding: calc(var(--spacing, .25rem) * 16);     /* p-16 — matches the observed empty state */
+  text-align: center;
+  color: var(--text-color-kumo-subtle);
+}
+
+
+/* =============================================================================
+ * 4. LIST  (OBSERVED — home-overview: ul[role=list].divide-y.divide-border)
+ * A flat, hairline-divided stack of 48px rows. Rows are a 3-column grid:
+ * leading media · flexible content · trailing meta.
+ * NOTE: the source divides with --color-border (#d9d9d9), a legacy non
+ * theme-aware token. Re-authored here on --color-kumo-line, which IS
+ * theme-aware and is what every other divider in the system uses.
+ * ========================================================================== */
+.ds .ds-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ds .ds-list > * + * {
+  border-top: 1px solid var(--color-kumo-line);
+}
+
+.ds .ds-list__item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;           /* observed template */
+  align-items: center;
+  gap: calc(var(--spacing, .25rem) * 2);          /* gap-2 */
+  min-height: calc(var(--spacing, .25rem) * 12);  /* h-12 = 48px */
+  padding-inline: calc(var(--spacing, .25rem) * 1);
+  font-size: var(--text-sm, 13px);
+  color: var(--text-color-kumo-default);
+}
+
+/* Interactive rows. */
+.ds .ds-list__item--interactive {
+  position: relative;
+  cursor: pointer;
+  border-radius: var(--radius-lg, .5rem);
+  transition: background-color var(--ds-duration) var(--ds-ease);
+}
+.ds .ds-list__item--interactive:hover   { background-color: var(--color-kumo-fill-hover); }
+.ds .ds-list__item[aria-selected="true"]{ background-color: color-mix(in oklab, var(--color-kumo-brand) 10%, transparent); }
+.ds .ds-list__item[aria-disabled="true"]{ color: var(--text-color-kumo-inactive); pointer-events: none; }
+
+/* Slots. */
+.ds .ds-list__media    { flex: none; }
+.ds .ds-list__content  { min-width: 0; }                                  /* enables truncation */
+.ds .ds-list__title    { color: var(--text-color-kumo-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds .ds-list__meta     { color: var(--text-color-kumo-subtle); font-size: var(--text-xs, 12px); }
+.ds .ds-list__trailing { justify-self: end; color: var(--text-color-kumo-subtle); }
+
+
+/* =============================================================================
+ * 5. CODE, LOG & KEYBOARD
+ *
+ * OBSERVED : inline mono text — `font-mono text-sm text-neutral-500 truncate`
+ *            and `font-mono text-xs tabular-nums truncate text-kumo-subtle`
+ *            (audit-log timestamps); and <kbd> at text-xs/4.
+ * PRESCRIPTIVE : the block-level <pre> code viewer and the log viewer chrome.
+ *            No <pre> or <code> element exists anywhere in the capture, so the
+ *            block recipes below are a faithful extension of the surface +
+ *            hairline + radius-lg system, not an observed component.
+ * ========================================================================== */
+
+/* Inline code (PRESCRIPTIVE chrome, OBSERVED type treatment). */
+.ds .ds-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs, 12px);
+  background-color: var(--color-kumo-recessed);
+  color: var(--text-color-kumo-default);
+  border-radius: var(--radius-sm, .25rem);
+  padding-inline: calc(var(--spacing, .25rem) * 1);
+  padding-block: calc(var(--spacing, .25rem) * .5);
+  box-shadow: var(--ds-ring-hairline);
+}
+
+/* Block code viewer — PRESCRIPTIVE. */
+.ds .ds-code-block {
+  margin: 0;
+  padding: calc(var(--spacing, .25rem) * 3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm, 13px);
+  line-height: var(--leading-relaxed, 1.625);
+  background-color: var(--color-kumo-recessed);
+  color: var(--text-color-kumo-default);
+  border-radius: var(--radius-lg, .5rem);
+  box-shadow: var(--ds-ring-hairline);
+  overflow-x: auto;
+  tab-size: 2;
+}
+.ds .ds-code-block__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing, .25rem) * 2);
+  padding: calc(var(--spacing, .25rem) * 2) calc(var(--spacing, .25rem) * 3);
+  border-bottom: 1px solid var(--color-kumo-line);
+  color: var(--text-color-kumo-subtle);
+  font-size: var(--text-xs, 12px);
+}
+
+/* Log viewer — PRESCRIPTIVE block, OBSERVED row typography.
+ * Timestamps use tabular figures so they form a rigid gutter. */
+.ds .ds-log {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs, 12px);
+  background-color: var(--color-kumo-recessed);
+  border-radius: var(--radius-lg, .5rem);
+  box-shadow: var(--ds-ring-hairline);
+  overflow: auto;
+}
+.ds .ds-log__row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: calc(var(--spacing, .25rem) * 2);
+  padding: calc(var(--spacing, .25rem) * 1) calc(var(--spacing, .25rem) * 3);
+  border-bottom: 1px solid var(--color-kumo-line);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ds .ds-log__row:last-child { border-bottom: 0; }
+.ds .ds-log__row:hover      { background-color: var(--color-kumo-fill-hover); }
+
+.ds .ds-log__time {
+  color: var(--text-color-kumo-subtle);
+  font-variant-numeric: tabular-nums;             /* observed: font-mono + tabular-nums */
+  white-space: nowrap;
+}
+
+/* Log severity. Mapped onto the existing status token family — no new colours. */
+.ds .ds-log__level { font-weight: var(--font-weight-medium, 500); white-space: nowrap; }
+.ds .ds-log__level--debug { color: var(--text-color-kumo-subtle);  }
+.ds .ds-log__level--info  { color: var(--text-color-kumo-info);    }
+.ds .ds-log__level--warn  { color: var(--text-color-kumo-warning); }
+.ds .ds-log__level--error { color: var(--text-color-kumo-danger);  }
+.ds .ds-log__level--success { color: var(--text-color-kumo-success); }
+
+/* Whole-row tint for error/warning lines. */
+.ds .ds-log__row--error   { background-color: color-mix(in oklab, var(--color-kumo-danger) 10%, transparent); }
+.ds .ds-log__row--warning { background-color: color-mix(in oklab, var(--color-kumo-warning) 10%, transparent); }
+
+/* ANSI / terminal palette — ABSENT from this target.
+ * There is NO ansi/terminal/console token family in tokens/colors.css and no
+ * terminal surface in any captured page. The mapping below is PRESCRIPTIVE: it
+ * assigns the 16 ANSI slots to tokens that DO exist (the --cf-* ramp), so a
+ * terminal renderer can be themed without inventing colours. Opt in explicitly.
+ * See the ANSI table in data-display.md. */
+.ds .ds-ansi {
+  --ds-ansi-black:           var(--cf-gray-0);
+  --ds-ansi-red:             var(--cf-red-5);
+  --ds-ansi-green:           var(--cf-green-5);
+  --ds-ansi-yellow:          var(--cf-gold-5);
+  --ds-ansi-blue:            var(--cf-blue-5);
+  --ds-ansi-magenta:         var(--cf-violet-5);
+  --ds-ansi-cyan:            var(--cf-cyan-5);
+  --ds-ansi-white:           var(--cf-gray-8);
+  --ds-ansi-bright-black:    var(--cf-gray-4);
+  --ds-ansi-bright-red:      var(--cf-red-6);
+  --ds-ansi-bright-green:    var(--cf-green-6);
+  --ds-ansi-bright-yellow:   var(--cf-gold-6);
+  --ds-ansi-bright-blue:     var(--cf-blue-6);
+  --ds-ansi-bright-magenta:  var(--cf-violet-6);
+  --ds-ansi-bright-cyan:     var(--cf-cyan-6);
+  --ds-ansi-bright-white:    var(--cf-gray-9);
+}
+.ds .ds-ansi-fg-black          { color: var(--ds-ansi-black); }
+.ds .ds-ansi-fg-red            { color: var(--ds-ansi-red); }
+.ds .ds-ansi-fg-green          { color: var(--ds-ansi-green); }
+.ds .ds-ansi-fg-yellow         { color: var(--ds-ansi-yellow); }
+.ds .ds-ansi-fg-blue           { color: var(--ds-ansi-blue); }
+.ds .ds-ansi-fg-magenta        { color: var(--ds-ansi-magenta); }
+.ds .ds-ansi-fg-cyan           { color: var(--ds-ansi-cyan); }
+.ds .ds-ansi-fg-white          { color: var(--ds-ansi-white); }
+.ds .ds-ansi-fg-bright-black   { color: var(--ds-ansi-bright-black); }
+.ds .ds-ansi-fg-bright-red     { color: var(--ds-ansi-bright-red); }
+.ds .ds-ansi-fg-bright-green   { color: var(--ds-ansi-bright-green); }
+.ds .ds-ansi-fg-bright-yellow  { color: var(--ds-ansi-bright-yellow); }
+.ds .ds-ansi-fg-bright-blue    { color: var(--ds-ansi-bright-blue); }
+.ds .ds-ansi-fg-bright-magenta { color: var(--ds-ansi-bright-magenta); }
+.ds .ds-ansi-fg-bright-cyan    { color: var(--ds-ansi-bright-cyan); }
+.ds .ds-ansi-fg-bright-white   { color: var(--ds-ansi-bright-white); }
+
+/* Keyboard key — OBSERVED (<kbd>, text-xs/4, subtle colour). */
+.ds .ds-kbd {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-sans);                  /* the target keeps <kbd> in the sans stack */
+  font-size: var(--text-xs, 12px);
+  line-height: 1rem;
+  color: var(--text-color-kumo-subtle);
+  white-space: nowrap;
+  padding-inline: calc(var(--spacing, .25rem) * 1);
+  border-radius: var(--radius-sm, .25rem);
+  box-shadow: var(--ds-ring-hairline);
+}
+
+
+/* =============================================================================
+ * 6. AVATAR  (PRESCRIPTIVE — no avatar component exists in the capture)
+ * facts.json: img deduped = 4, all vendor logos/illustrations; zero elements
+ * named or roled as an avatar. Sizes below are anchored to the target's REAL
+ * box scale (size-4/5/6 appear in markup; icons render at 12/14/16/18/24/48).
+ * ========================================================================== */
+.ds .ds-avatar {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 9999px;                          /* rounded-full — 162 uses */
+  background-color: var(--color-kumo-fill);
+  color: var(--text-color-kumo-default);
+  font-weight: var(--font-weight-medium, 500);
+  user-select: none;
+}
+.ds .ds-avatar img,
+.ds .ds-avatar__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Fallback initials sit under the image and show through if it fails to load. */
+.ds .ds-avatar__fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  text-transform: uppercase;
+}
+
+/* Sizes — track the observed box/icon scale (size-4/5/6 in markup; icons render
+ * at 12/14/16/18/24/48). Initials are only legible from --md up; at --xs/--sm
+ * use an image or an icon, not text. Font sizes stay on the type scale. */
+.ds .ds-avatar--xs { width: 1rem;    height: 1rem;    font-size: var(--text-xs, 12px); }  /* 16 — size-4 */
+.ds .ds-avatar--sm { width: 1.25rem; height: 1.25rem; font-size: var(--text-xs, 12px); }  /* 20 — size-5 */
+.ds .ds-avatar--md { width: 1.5rem;  height: 1.5rem;  font-size: var(--text-xs, 12px); }  /* 24 — size-6 */
+.ds .ds-avatar--lg { width: 2rem;    height: 2rem;    font-size: var(--text-sm, 13px); }  /* 32 */
+.ds .ds-avatar--xl { width: 3rem;    height: 3rem;    font-size: var(--text-lg, 16px); }  /* 48 — observed icon size */
+
+/* Square variant (org / project / service tiles). */
+.ds .ds-avatar--square { border-radius: var(--radius-lg, .5rem); }
+
+/* Status dot — OBSERVED: `size-1.5 rounded-full bg-green-500` aria-hidden. */
+.ds .ds-avatar__status {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: .375rem;                                 /* size-1.5 */
+  height: .375rem;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px var(--color-kumo-base);   /* punch a hole in the avatar */
+}
+.ds .ds-avatar__status--online  { background-color: var(--color-kumo-success); }
+.ds .ds-avatar__status--busy    { background-color: var(--color-kumo-danger);  }
+.ds .ds-avatar__status--away    { background-color: var(--color-kumo-warning); }
+.ds .ds-avatar__status--offline { background-color: var(--color-kumo-interact);}
+
+/* Overlapping stack. */
+.ds .ds-avatar-group { display: inline-flex; }
+.ds .ds-avatar-group > .ds-avatar + .ds-avatar { margin-left: -.5rem; }
+.ds .ds-avatar-group > .ds-avatar { box-shadow: 0 0 0 2px var(--color-kumo-base); }
+
+
+/* =============================================================================
+ * 7. PROGRESS  (OBSERVED)
+ * Real markup:
+ *   track     <div class="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+ *   indicator <div class="h-full bg-[#f6821f] rounded-full transition-all duration-300" style="width:0%">
+ * The fill is Cloudflare orange. #f6821f is exactly --text-color-kumo-brand,
+ * which holds the same value in EVERY theme — so we reference the token instead
+ * of the literal. The track maps to --color-kumo-fill (the theme-aware
+ * neutral-200/neutral-800 pair).
+ * NOTE: the source markup carries NO role="progressbar". Ours does — see the md.
+ * ========================================================================== */
+.ds .ds-progress {
+  width: 100%;
+  height: .5rem;                                  /* h-2 */
+  background-color: var(--color-kumo-fill);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.ds .ds-progress__indicator {
+  height: 100%;
+  width: var(--ds-progress-value, 0%);
+  background-color: var(--text-color-kumo-brand);
+  border-radius: 9999px;
+  transition: width 300ms var(--ds-ease);         /* observed: duration-300 */
+}
+
+/* Sizes. */
+.ds .ds-progress--sm { height: .25rem; }          /* h-1 */
+.ds .ds-progress--lg { height: .75rem; }          /* h-3 */
+
+/* Intent variants — e.g. a usage meter that turns red near its quota. */
+.ds .ds-progress--info    .ds-progress__indicator { background-color: var(--color-kumo-info);    }
+.ds .ds-progress--success .ds-progress__indicator { background-color: var(--color-kumo-success); }
+.ds .ds-progress--warning .ds-progress__indicator { background-color: var(--color-kumo-warning); }
+.ds .ds-progress--danger  .ds-progress__indicator { background-color: var(--color-kumo-danger);  }
+
+/* Indeterminate — a travelling band, reusing the shimmer timing. */
+.ds .ds-progress--indeterminate .ds-progress__indicator {
+  width: 33%;
+  transition: none;
+  animation: ds-progress-slide 1.5s var(--ds-ease) infinite;
+}
+@keyframes ds-progress-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+
+/* =============================================================================
+ * 8. SKELETON  (OBSERVED — the only *named* CSS component in the capture)
+ * Source: `.skeleton-line` + `.skeleton-line:after`, driven by three per-instance
+ * inline custom properties:
+ *     --skeleton-width    e.g. 32% / 52% / 54% / 78%   (randomised per line)
+ *     --shimmer-duration  e.g. 1.50s / 1.35s / 1.70s   (default 1.5s)
+ *     --shimmer-delay     e.g. 0.41s / 0.30s / 0.01s   (default 0s, staggers rows)
+ * Geometry is exact: height .5rem, border-radius 2px (== --radius-xs).
+ * The source fills with a raw #f3f4f6 and shimmers with a raw #00000014 — both
+ * hardcoded and NOT theme-aware (they stay light in dark mode). Re-authored here
+ * on --color-kumo-fill / --color-kumo-shadow-edge so the skeleton follows theme.
+ * ========================================================================== */
+.ds .ds-skeleton {
+  position: relative;
+  overflow: hidden;
+  height: .5rem;
+  width: var(--skeleton-width, 100%);
+  background-color: var(--color-kumo-fill);
+  border-radius: var(--radius-xs, .125rem);       /* .125rem = 2px, the observed value */
+}
+.ds .ds-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--color-kumo-shadow-edge) 50%,
+    transparent 100%
+  );
+  animation: ds-shimmer
+             var(--shimmer-duration, 1.5s)
+             var(--shimmer-delay, 0s)
+             infinite ease-in-out;
+}
+@keyframes ds-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Shape variants. */
+.ds .ds-skeleton--text   { height: 1rem; border-radius: var(--radius-sm, .25rem); }  /* observed: h-4 rounded */
+.ds .ds-skeleton--circle { width: 1.25rem; height: 1.25rem; border-radius: 9999px; } /* observed: size-5 rounded-full */
+.ds .ds-skeleton--block  { height: 2rem; border-radius: var(--radius-lg, .5rem); }   /* observed: h-8 sparkline slot */
+
+/* Pulse variant — the target also uses `animate-pulse` for circular//text
+ * placeholders instead of the shimmer sweep. */
+.ds .ds-skeleton--pulse::after { content: none; }
+.ds .ds-skeleton--pulse {
+  animation: ds-pulse 2s cubic-bezier(.4, 0, .6, 1) infinite;   /* == --animate-pulse */
+}
+@keyframes ds-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .5; }
+}
+
+/* Staggered lists. The target sets --stagger-delay per row and feeds it into
+ * animation-delay, so rows wake up in sequence rather than in lockstep. */
+.ds .ds-skeleton-list > * { animation-delay: var(--stagger-delay, 0ms); }
+
+/* Skeleton table row — pair with .ds-table to hold layout while data loads. */
+.ds .ds-skeleton-row td { height: calc(var(--spacing, .25rem) * 12); }
+
+
+/* =============================================================================
+ * 9. STEPPER  (PRESCRIPTIVE — no stepper/wizard exists in the capture)
+ * Zero elements with aria-current="step", zero stepper markup across all 8
+ * pages. Built strictly from the observed primitives: rounded-full indicators,
+ * --color-kumo-brand for the active step, hairlines for the connectors.
+ * ========================================================================== */
+.ds .ds-stepper {
+  display: flex;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: ds-step;
+}
+.ds .ds-stepper__step {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing, .25rem) * 2);
+  text-align: center;
+}
+/* Connector — a hairline between adjacent indicators. */
+.ds .ds-stepper__step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: .875rem;                                   /* centred on a 1.75rem indicator */
+  left: calc(50% + 1.25rem);
+  right: calc(-50% + 1.25rem);
+  height: 1px;
+  background-color: var(--color-kumo-line);
+}
+.ds .ds-stepper__indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  font-size: var(--text-xs, 12px);
+  font-weight: var(--font-weight-medium, 500);
+  background-color: var(--color-kumo-fill);
+  color: var(--text-color-kumo-subtle);
+  transition: background-color var(--ds-duration) var(--ds-ease),
+              color var(--ds-duration) var(--ds-ease);
+}
+.ds .ds-stepper__label {
+  font-size: var(--text-sm, 13px);
+  color: var(--text-color-kumo-subtle);
+}
+
+/* States. */
+.ds .ds-stepper__step[data-state="complete"] .ds-stepper__indicator {
+  background-color: var(--color-kumo-brand);
+  color: var(--text-color-kumo-inverse);
+}
+.ds .ds-stepper__step[data-state="complete"]::after {
+  background-color: var(--color-kumo-brand);
+}
+.ds .ds-stepper__step[aria-current="step"] .ds-stepper__indicator {
+  background-color: var(--color-kumo-brand);
+  color: var(--text-color-kumo-inverse);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-kumo-brand) 20%, transparent);
+}
+.ds .ds-stepper__step[aria-current="step"] .ds-stepper__label {
+  color: var(--text-color-kumo-strong);
+  font-weight: var(--font-weight-medium, 500);
+}
+.ds .ds-stepper__step[data-state="error"] .ds-stepper__indicator {
+  background-color: var(--color-kumo-danger);
+  color: var(--text-color-kumo-inverse);
+}
+.ds .ds-stepper__step[data-state="error"] .ds-stepper__label {
+  color: var(--text-color-kumo-danger);
+}
+.ds .ds-stepper__step[aria-disabled="true"] .ds-stepper__indicator {
+  color: var(--text-color-kumo-inactive);
+}
+
+/* Vertical orientation. */
+.ds .ds-stepper--vertical { flex-direction: column; align-items: stretch; }
+.ds .ds-stepper--vertical .ds-stepper__step {
+  flex-direction: row;
+  align-items: flex-start;
+  text-align: left;
+  padding-bottom: calc(var(--spacing, .25rem) * 6);
+}
+.ds .ds-stepper--vertical .ds-stepper__step:not(:last-child)::after {
+  top: 1.75rem;
+  bottom: 0;
+  left: .875rem;
+  right: auto;
+  width: 1px;
+  height: auto;
+}
+
+
+/* =============================================================================
+ * 10. REDUCED MOTION
+ * The source ships 8 prefers-reduced-motion rules. Honour the same contract:
+ * kill the shimmer/pulse/slide sweeps but keep the placeholders visible.
+ * ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .ds .ds-skeleton::after,
+  .ds .ds-skeleton--pulse,
+  .ds .ds-progress--indeterminate .ds-progress__indicator {
+    animation: none;
+  }
+  .ds .ds-progress--indeterminate .ds-progress__indicator { width: 100%; opacity: .5; }
+  .ds .ds-progress__indicator,
+  .ds .ds-card--interactive,
+  .ds .ds-table__row-surface,
+  .ds .ds-list__item--interactive {
+    transition: none;
+  }
+}

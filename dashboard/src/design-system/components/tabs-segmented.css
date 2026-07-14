@@ -1,0 +1,402 @@
+/* =============================================================================
+ * cloudflare-dashboard — TABS & SEGMENTED CONTROLS
+ * Re-authored recipes. Scoped under `.ds`.
+ *
+ * PROVENANCE
+ *   Anatomy + every declaration below is transcribed from the post-render DOM in
+ *   capture/{audit-log,billing,members}.html and the compiled rules in
+ *   capture/static/004-init.q2icrP6B.css. The source is classified
+ *   `utility-compiled` (classification.json, computedStyleMandatory: true), so
+ *   utility classes — not named component tokens — carry the values. Colors are
+ *   referenced as the real design tokens; the geometry/type scale is referenced
+ *   by its Tailwind theme var with the EXACT mined value as a var() fallback,
+ *   because this run emitted only tokens/colors.css + tokens/typography.css
+ *   (no spacing.css / elevation.css / motion.css to import).
+ *
+ * OBSERVED (do not confuse with prescriptive):
+ *   - Underline tabs .......... audit-log.html (page-level nav)
+ *   - Segmented control ....... billing.html + members.html (md, <a role=tab>),
+ *                               audit-log.html (sm, <button role=tab>)
+ *   - Overflow scroll-fade .... .kumo-tabs-list + [data-overflowing]
+ *   PRESCRIPTIVE (never rendered in the capture; marked inline below):
+ *   - disabled tab, vertical orientation, tab icons/badges.
+ *
+ * THEMES: light = :root, dark = [data-mode=dark] (plus .theme-fedramp /
+ * .theme-kumo). Every color here is a var() — themes switch with no overrides.
+ *
+ * NOTE ON ACCENT: the active indicator is --color-kumo-brand, which in this
+ * system is BLUE (oklch(57.72% .2324 260)). Cloudflare orange (#f6821f) is
+ * --text-color-kumo-brand and is NOT used by tabs. Preserved as the data shows.
+ * ========================================================================== */
+
+/* -----------------------------------------------------------------------------
+ * 0. Component contract
+ *
+ * The moving indicator is positioned from four custom properties that the tab
+ * component writes to the indicator element as an inline style on every
+ * selection change (Base UI `Tabs`, data-kumo-part="tab"). Names preserved
+ * verbatim from the source:
+ *
+ *   --active-tab-left    x-offset of the active tab, px
+ *   --active-tab-width   width of the active tab, px
+ *   --active-tab-top     y-offset of the active tab, px  (segmented thumb only)
+ *   --active-tab-height  height of the active tab, px    (segmented thumb only)
+ *
+ * Until the first measurement lands the indicator element carries
+ * data-rendered="false" and is faded/scaled out (see §4).
+ * -------------------------------------------------------------------------- */
+
+.ds .ds-tabs {
+  /* Scale tokens: value-exact, mined from computed-tokens.json. */
+  --ds-tab-space: var(--spacing, 0.25rem);   /* 4px base unit          */
+  --ds-tab-radius-sm: var(--radius-sm, 0.25rem);   /* .25rem           */
+  --ds-tab-radius-md: var(--radius-md, 0.375rem);  /* .375rem          */
+  --ds-tab-radius-lg: var(--radius-lg, 0.5rem);    /* .5rem            */
+
+  /* Motion: duration-200 is the dominant transition in the target (.2s). */
+  --ds-tab-duration: 0.2s;
+  --ds-tab-ease: var(--default-transition-timing-function, cubic-bezier(0.4, 0, 0.2, 1));
+
+  /* Elevation for the segmented thumb (Tailwind `shadow-sm`). The source paints
+   * this via --tw-shadow-color, a Tailwind-internal runtime var that is unset in
+   * light and kumo (tokens.json), so it would fall back to a fixed black and the
+   * thumb would never theme. The shadow colour is re-referenced as the real token
+   * --color-kumo-shadow-drop, which IS theme-aware (light oklch(0% 0 0/.08),
+   * dark/kumo oklch(0% 0 0/.3)). Geometry is preserved as mined; the composition
+   * matches navigation.css:920 and data-display.css:44-49. */
+  --ds-tab-thumb-shadow:
+    0 1px 3px 0 var(--color-kumo-shadow-drop),
+    0 1px 2px -1px var(--color-kumo-shadow-drop);
+
+  display: flex;
+  flex-direction: column;
+}
+
+/* =============================================================================
+ * 1. TAB LIST — shared geometry
+ * From: `relative flex min-w-0 shrink items-stretch`
+ * ========================================================================== */
+
+.ds .ds-tabs__list {
+  position: relative;      /* containing block for the absolute indicator */
+  display: flex;
+  min-width: 0;            /* min-w-0: lets the list shrink so it can scroll */
+  flex-shrink: 1;          /* shrink */
+  align-items: stretch;    /* items-stretch: tabs fill the bar height */
+}
+
+/* =============================================================================
+ * 2. VARIANT: UNDERLINE  (observed — audit-log page nav)
+ * List: `gap-4 border-b border-kumo-hairline pb-2 h-7.5`
+ * A 1px hairline rule runs the full width; a 2px brand bar slides along it.
+ * ========================================================================== */
+
+.ds .ds-tabs__list--underline {
+  gap: calc(var(--ds-tab-space) * 4);             /* gap-4  → 16px */
+  height: calc(var(--ds-tab-space) * 7.5);        /* h-7.5  → 30px */
+  padding-bottom: calc(var(--ds-tab-space) * 2);  /* pb-2   → 8px  */
+  border-bottom: 1px solid var(--color-kumo-hairline);
+}
+
+/* =============================================================================
+ * 3. VARIANT: SEGMENTED  (observed — billing/members md, audit-log sm)
+ * List: `kumo-tabs-list overflow-x-auto bg-kumo-recessed px-0.5 rounded-*`
+ * A recessed track holds an elevated "thumb" that slides under the labels.
+ * The 2px inline padding (px-0.5) + 2px tab margin (my-0.5) is exactly the
+ * inset the thumb sits in — measured: 32px thumb inside a 36px md track.
+ * ========================================================================== */
+
+.ds .ds-tabs__list--segmented {
+  background-color: var(--color-kumo-recessed);
+  padding-inline: calc(var(--ds-tab-space) * 0.5); /* px-0.5 → 2px */
+  overflow-x: auto;                                /* overflow-x-auto */
+  overscroll-behavior-x: contain;                  /* .kumo-tabs-list */
+
+  /* Scroll-fade contract (see §6). */
+  --scroll-fade-width: 3rem;
+  scroll-padding-inline: var(--scroll-fade-width); /* scroll-px-(--scroll-fade-width) */
+}
+
+/* --- Segmented sizes -------------------------------------------------------
+ * sm : h-6.5 (26px) track, rounded-md   — audit-log
+ * md : h-9   (36px) track, rounded-lg   — billing / members (default)
+ * The md list additionally tightens the fade ramp to 1px so the mask snaps in
+ * as soon as the list overflows at all (`[--scroll-fade-range:1px]`).
+ * -------------------------------------------------------------------------- */
+
+.ds .ds-tabs__list--segmented.ds-tabs__list--sm {
+  height: calc(var(--ds-tab-space) * 6.5);  /* h-6.5 → 26px */
+  border-radius: var(--ds-tab-radius-md);
+}
+
+.ds .ds-tabs__list--segmented.ds-tabs__list--md {
+  height: calc(var(--ds-tab-space) * 9);    /* h-9 → 36px */
+  border-radius: var(--ds-tab-radius-lg);
+  --scroll-fade-range: 1px;
+}
+
+/* =============================================================================
+ * 4. TAB — shared base
+ * From: `relative z-2 flex items-center bg-transparent whitespace-nowrap
+ *        cursor-pointer text-kumo-subtle focus:outline-none
+ *        focus-visible:ring-2 focus-visible:ring-kumo-brand`
+ * z-2 keeps the label ABOVE the z-1 indicator, so the sliding thumb never
+ * paints over the text.
+ * ========================================================================== */
+
+.ds .ds-tabs__tab {
+  position: relative;
+  z-index: 2;                          /* z-2 — above the indicator (z-1) */
+  display: flex;
+  align-items: center;
+  background-color: transparent;       /* the indicator supplies the fill */
+  white-space: nowrap;                 /* whitespace-nowrap — never wrap a label */
+  cursor: pointer;
+  text-decoration: none;               /* no-underline — tabs are often <a> */
+  color: var(--text-color-kumo-subtle);
+  font-family: var(--font-sans);
+  transition:
+    color var(--ds-tab-duration) var(--ds-tab-ease),
+    background-color var(--ds-tab-duration) var(--ds-tab-ease);
+}
+
+/* Selected — the ONLY selected-state hook in the source is [aria-selected].
+ * (`data-active` is also present but aria-selected is what the CSS keys on.) */
+.ds .ds-tabs__tab[aria-selected="true"] {
+  color: var(--text-color-kumo-default);
+}
+
+/* Hover (unselected) */
+.ds .ds-tabs__tab:hover {
+  color: var(--text-color-kumo-default);
+}
+
+/* Focus ring.
+ * The source sets `focus:outline-none focus:ring-kumo-focus/50` (a colour with
+ * no width — inert) and then the REAL ring on focus-visible:
+ * `focus-visible:ring-2 focus-visible:ring-kumo-brand` → 2px brand ring.
+ * Authored here as an outline so it cannot be clipped by overflow-x: auto. */
+.ds .ds-tabs__tab:focus {
+  outline: none;
+}
+
+.ds .ds-tabs__tab:focus-visible {
+  outline: 2px solid var(--color-kumo-brand);  /* ring-2 + ring-kumo-brand */
+  outline-offset: 0;
+}
+
+/* --- Underline tab ---------------------------------------------------------
+ * `rounded px-2 py-3 text-base hover:bg-kumo-tint hover:text-kumo-default
+ *  aria-selected:hover:bg-kumo-tint aria-selected:font-medium
+ *  aria-selected:text-kumo-default`
+ * Note this variant DOES take a hover fill (kumo-tint) — the segmented one
+ * deliberately does not, because its thumb would fight with it.
+ * -------------------------------------------------------------------------- */
+
+.ds .ds-tabs__tab--underline {
+  border-radius: var(--ds-tab-radius-sm);          /* `rounded` → .25rem */
+  padding-inline: calc(var(--ds-tab-space) * 2);   /* px-2 → 8px  */
+  padding-block: calc(var(--ds-tab-space) * 3);    /* py-3 → 12px */
+  font-size: var(--text-base, 14px);
+  line-height: var(--text-base--line-height, calc(1.25 / 0.875));
+}
+
+.ds .ds-tabs__tab--underline:hover,
+.ds .ds-tabs__tab--underline[aria-selected="true"]:hover {
+  background-color: var(--color-kumo-tint);        /* hover + selected-hover */
+}
+
+.ds .ds-tabs__tab--underline[aria-selected="true"] {
+  font-weight: var(--font-weight-medium, 500);     /* aria-selected:font-medium */
+}
+
+/* --- Segmented tab ---------------------------------------------------------
+ * `my-0.5 hover:text-kumo-default aria-selected:text-kumo-default
+ *  focus-visible:ring-inset px-2.5|px-2 rounded-md|rounded-sm text-base|text-xs`
+ * The 2px block margin is what leaves room for the track's inset.
+ * The ring is INSET here so a focused edge tab is not clipped by the scroller.
+ * Selected weight stays regular — the thumb, not weight, carries selection.
+ * -------------------------------------------------------------------------- */
+
+.ds .ds-tabs__tab--segmented {
+  margin-block: calc(var(--ds-tab-space) * 0.5);   /* my-0.5 → 2px */
+}
+
+.ds .ds-tabs__tab--segmented:focus-visible {
+  outline-offset: -2px;                            /* focus-visible:ring-inset */
+}
+
+.ds .ds-tabs__tab--segmented.ds-tabs__tab--sm {
+  padding-inline: calc(var(--ds-tab-space) * 2);   /* px-2 → 8px */
+  border-radius: var(--ds-tab-radius-sm);          /* rounded-sm */
+  font-size: var(--text-xs, 12px);
+  line-height: var(--text-xs--line-height, calc(1 / 0.75));
+}
+
+.ds .ds-tabs__tab--segmented.ds-tabs__tab--md {
+  padding-inline: calc(var(--ds-tab-space) * 2.5); /* px-2.5 → 10px */
+  border-radius: var(--ds-tab-radius-md);          /* rounded-md */
+  font-size: var(--text-base, 14px);
+  line-height: var(--text-base--line-height, calc(1.25 / 0.875));
+}
+
+/* --- Disabled — PRESCRIPTIVE ------------------------------------------------
+ * No disabled tab is rendered anywhere in the capture (every role="tab" carries
+ * aria-disabled="false"). The treatment below reuses the app-wide disabled
+ * convention observed on other controls (`disabled:cursor-not-allowed`,
+ * `disabled:text-kumo-subtle`, `disabled:opacity-50`) and the real
+ * --text-color-kumo-inactive token. Do not present it as an observed fact.
+ * (The markup elsewhere also uses `disabled:text-kumo-disabled`, but no
+ * matching token is defined in :root / [data-mode=dark] — it is a dead class.)
+ * -------------------------------------------------------------------------- */
+
+.ds .ds-tabs__tab[aria-disabled="true"],
+.ds .ds-tabs__tab:disabled {
+  color: var(--text-color-kumo-inactive);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Disabled must never take a hover fill. */
+.ds .ds-tabs__tab[aria-disabled="true"]:hover,
+.ds .ds-tabs__tab:disabled:hover {
+  background-color: transparent;
+  color: var(--text-color-kumo-inactive);
+}
+
+/* =============================================================================
+ * 5. INDICATOR
+ * Shared: `absolute z-1 left-0 w-(--active-tab-width)
+ *          translate-x-(--active-tab-left) transition-all duration-200
+ *          data-[rendered=false]:scale-90 data-[rendered=false]:opacity-0`
+ * One element per list, slid with a transform — cheap, and it animates between
+ * any two tabs without reflow. role="presentation": it is pure decoration.
+ * ========================================================================== */
+
+.ds .ds-tabs__indicator {
+  position: absolute;
+  z-index: 1;                                  /* z-1 — under the labels (z-2) */
+  left: 0;
+  width: var(--active-tab-width, 0px);
+  translate: var(--active-tab-left, 0px);           /* translate-x-(--active-tab-left) */
+  transition: all var(--ds-tab-duration) var(--ds-tab-ease);
+}
+
+/* Pre-measurement state: the component sets data-rendered="false" until it has
+ * measured the active tab, so the indicator never flashes at the wrong place. */
+.ds .ds-tabs__indicator[data-rendered="false"] {
+  scale: 90%;      /* data-[rendered=false]:scale-90  */
+  opacity: 0;      /* data-[rendered=false]:opacity-0 */
+}
+
+/* --- Underline bar: `bottom-0 h-0.5 bg-kumo-brand` ------------------------- */
+.ds .ds-tabs__indicator--underline {
+  bottom: 0;
+  height: calc(var(--ds-tab-space) * 0.5);     /* h-0.5 → 2px */
+  background-color: var(--color-kumo-brand);   /* the accent (blue) */
+}
+
+/* --- Segmented thumb: `top-(--active-tab-top) h-(--active-tab-height)
+ *     bg-kumo-base shadow-sm ring ring-kumo-line rounded-md|rounded`
+ * Height/top come from the measured active tab, so the thumb tracks tabs of
+ * differing size without any hard-coded geometry. -------------------------- */
+.ds .ds-tabs__indicator--thumb {
+  top: var(--active-tab-top, 0px);
+  height: var(--active-tab-height, 0px);
+  background-color: var(--color-kumo-base);    /* lifts off the recessed track */
+  box-shadow:
+    var(--ds-tab-thumb-shadow),                /* shadow-sm */
+    inset 0 0 0 1px var(--color-kumo-line);    /* `ring` = 1px ring-kumo-line */
+}
+
+.ds .ds-tabs__indicator--thumb.ds-tabs__indicator--sm {
+  border-radius: var(--ds-tab-radius-sm);      /* `rounded` → .25rem */
+}
+
+.ds .ds-tabs__indicator--thumb.ds-tabs__indicator--md {
+  border-radius: var(--ds-tab-radius-md);      /* rounded-md → .375rem */
+}
+
+/* =============================================================================
+ * 6. OVERFLOW — scroll-driven edge fade  (observed, segmented lists only)
+ *
+ * The source does NOT use arrow buttons. The list simply scrolls, its scrollbar
+ * is hidden, and a mask fades whichever edge still has content behind it. The
+ * fade is driven by a SCROLL TIMELINE, so it costs no JS and no scroll handler:
+ * two registered @property numbers are animated from the element's own x-scroll
+ * progress and feed a linear-gradient mask.
+ *
+ * The host toggles [data-overflowing] on the list when its content overflows.
+ * Tunables (set on the list): --scroll-fade-width (fade size, 3rem) and
+ * --scroll-fade-range (scroll distance over which the fade ramps in).
+ * ========================================================================== */
+
+@property --fade-left-n {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --fade-right-n {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@keyframes ds-scroll-fade-x-left {
+  from { --fade-left-n: 0; }
+  to   { --fade-left-n: 1; }
+}
+
+@keyframes ds-scroll-fade-x-right {
+  from { --fade-right-n: 1; }
+  to   { --fade-right-n: 0; }
+}
+
+@supports (animation-timeline: scroll()) {
+  /* Hide the scrollbar — the fade is the affordance. */
+  .ds .ds-tabs__list--segmented {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .ds .ds-tabs__list--segmented::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Left edge fades IN as you scroll away from the start; right edge fades OUT
+   * as you reach the end. At rest at scroll 0, only the right edge is masked. */
+  .ds .ds-tabs__list--segmented[data-overflowing] {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      white calc(var(--fade-left-n) * var(--scroll-fade-width, 3rem)),
+      white calc(100% - var(--fade-right-n) * var(--scroll-fade-width, 3rem)),
+      transparent
+    );
+    animation-name: ds-scroll-fade-x-left, ds-scroll-fade-x-right;
+    animation-timing-function: linear, linear;
+    animation-timeline: scroll(self x);
+    animation-range:
+      0 var(--scroll-fade-range, 3rem),
+      calc(100% - var(--scroll-fade-range, 3rem)) 100%;
+    animation-fill-mode: both;
+  }
+}
+
+/* =============================================================================
+ * 7. REDUCED MOTION
+ * The target ships 8 prefers-reduced-motion rules. Selection must remain
+ * legible without the slide: the indicator jumps instead of animating.
+ * ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .ds .ds-tabs__indicator,
+  .ds .ds-tabs__tab {
+    transition: none;
+  }
+
+  .ds .ds-tabs__indicator[data-rendered="false"] {
+    scale: 100%;
+  }
+}

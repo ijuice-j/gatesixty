@@ -1,19 +1,49 @@
 @import "tailwindcss";
 
-:root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-}
+/* The design system is a LIBRARY, not app source — Tailwind must not mine it for class
+ * names. Its .md docs contain illustrative snippets like `bg-[var(…)]` (with a literal
+ * ellipsis), which v4's automatic source detection happily compiles into
+ * `.bg-\[var\(…\)\] { background-color: var(…) }` — invalid CSS that fails the parser.
+ * Excluding it from content scanning does NOT affect the @import below. */
+@source not "../design-system";
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* The design system is imported in TWO pieces, on purpose — do not collapse this back into
+ * the single `@import ".../index.css"` its README suggests.
+ *
+ * TOKENS stay UNLAYERED. They redeclare Tailwind theme names (--spacing, --radius-*,
+ * --text-*) and an unlayered :root only outranks Tailwind's `@layer theme` defaults if it is
+ * parsed second — hence after `@import "tailwindcss"`. Get this backwards and text-base
+ * silently stays 16px instead of the target's 14px.
+ *
+ * RECIPES come from components.layered.css, which wraps them in `@layer components` so
+ * Tailwind's later `utilities` layer can override them. Reliquary ships them UNLAYERED and
+ * scoped as `.ds .ds-card` (specificity 0,2,0) — and an unlayered rule beats ANY layered rule
+ * whatever its specificity, so every utility on a .ds-* element (p-0, flex, w-20) was silently
+ * inert and the recipe's own `flex-direction: column` won.
+ *
+ * `@import "./components.css" layer(components)` is the CSS-native fix, but Next/Turbopack
+ * DROPS the layer() on the import — the compiled output showed `@layer components;` as an
+ * empty statement with the recipes unlayered at the end, after `@layer utilities`. Hence the
+ * pre-wrapped bundle. Regenerate with: node scripts/layer-design-system.mjs */
+@import "../design-system/tokens/index.css";
+@import "../design-system/components.layered.css";
+
+/* The system themes off [data-mode=dark] — NOT a .dark class. Bare `.dark` occurs zero times
+ * in the source CSS, so Tailwind's stock dark: variant would never fire against these tokens. */
+@custom-variant dark (&:where([data-mode="dark"], [data-mode="dark"] *));
+
+/* The role tokens ship as `"Inter"` / `"JetBrains Mono"`, but next/font self-hosts each face
+ * under a generated family name — a bare "Inter" would miss it and fall back to system sans.
+ * Repoint the roles at next/font's variables so the real faces load, with no external request.
+ * (Cloudflare's own mono is Paper Mono: proprietary, never bundled — JetBrains Mono stands in.) */
+:root {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--color-kumo-canvas);
+  color: var(--text-color-kumo-default);
+  font-family: var(--font-sans);
 }
