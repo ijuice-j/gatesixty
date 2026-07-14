@@ -2,8 +2,15 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { listCalendarEvents, GoogleAuthExpiredError } from "@/lib/google/calendar";
-import { reconstructRange, dateRange, type ReconstructedDay } from "@/lib/activity/range";
+import { getUser } from "@/lib/supabase/user";
+import { listCalendarEventsForMonths, GoogleAuthExpiredError } from "@/lib/google/calendar";
+import {
+  reconstructRange,
+  dateRange,
+  monthsSpanned,
+  monthBounds,
+  type ReconstructedDay,
+} from "@/lib/activity/range";
 import {
   followThrough,
   totalFollowThrough,
@@ -17,16 +24,14 @@ import {
   daysInMonth,
   shiftMonth,
   weekdayIndex,
-  zonedDayStart,
 } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
-import { TimezoneSync } from "../timezone-sync";
-import { AppShell } from "../shell";
-import { ZoomNav } from "../review-nav";
-import { MetricHeader } from "../metric-header";
-import { ReconnectBanner, LoadErrorBanner } from "../banners";
+import { TimezoneSync } from "../../timezone-sync";
+import { MetricHeader } from "../../metric-header";
+import { ReconnectBanner, LoadErrorBanner } from "../../banners";
 
-// Reconstruction reads the live calendar per request — never cache.
+// The ledger is read per request and never cached. The CALENDAR is cached for 5 minutes
+// (lib/google/calendar.ts) — see the note in ../page.tsx.
 export const dynamic = "force-dynamic";
 
 export default async function MonthPage({
@@ -34,23 +39,15 @@ export default async function MonthPage({
 }: {
   searchParams: Promise<{ date?: string }>;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
   const cookieStore = await cookies();
   const { tz, resolved } = resolveViewerTimeZone(cookieStore.get("tz")?.value);
 
   if (!resolved) {
     return (
-      <AppShell email={user.email} title="Review">
         <div className="w-full max-w-5xl px-6 py-6">
           <TimezoneSync current={tz} resolved={false} />
           <p className="text-base text-[var(--text-color-kumo-subtle)]">Loading your month…</p>
         </div>
-      </AppShell>
     );
   }
 
@@ -64,17 +61,15 @@ export default async function MonthPage({
   const nDays = daysInMonth(first);
   const nPrev = daysInMonth(prevFirst);
 
-  // Two months in ONE Google call: this one, and the last one for the delta.
+  // This month and the previous one — the previous one is the delta.
   const dates = dateRange(prevFirst, nPrev + nDays);
-  const windowStart = zonedDayStart(prevFirst, tz);
-  const windowEnd = zonedDayStart(nextFirst, tz);
 
-  const [{ data: cred }, { data: logData }] = await Promise.all([
-    supabase
-      .from("google_credentials")
-      .select("refresh_token")
-      .eq("user_id", user.id)
-      .maybeSingle(),
+  // Auth and both queries in parallel — RLS scopes each table to its owner, so neither
+  // query has to wait for the user id.
+  const supabase = await createClient();
+  const [user, { data: cred }, { data: logData }] = await Promise.all([
+    getUser(),
+    supabase.from("google_credentials").select("refresh_token").maybeSingle(),
     supabase
       .from("activity_logs")
       .select(
@@ -83,6 +78,8 @@ export default async function MonthPage({
       .gte("occurred_on", prevFirst)
       .lt("occurred_on", nextFirst),
   ]);
+  if (!user) redirect("/login");
+
   const logs = (logData ?? []) as ActivityLog[];
 
   let all: ReconstructedDay[] = [];
@@ -91,7 +88,13 @@ export default async function MonthPage({
 
   if (cred?.refresh_token) {
     try {
-      const events = await listCalendarEvents(cred.refresh_token, windowStart, windowEnd);
+      // Exactly the two months this view needs — and they're the same cache entries the
+      // day and week views fill, so switching zoom inside a month costs Google nothing.
+      const events = await listCalendarEventsForMonths(
+        cred.refresh_token,
+        monthsSpanned(dates),
+        (m) => monthBounds(m, tz),
+      );
       all = reconstructRange(events, logs, new Date(), dates, tz);
     } catch (e) {
       if (e instanceof GoogleAuthExpiredError) needsReconnect = true;
@@ -123,7 +126,6 @@ export default async function MonthPage({
   });
 
   return (
-    <AppShell email={user.email} title="Review" actions={<ZoomNav date={ref} />}>
       <div className="w-full max-w-5xl px-6 py-6">
         <TimezoneSync current={tz} resolved />
 
@@ -267,7 +269,6 @@ export default async function MonthPage({
           </div>
         )}
       </div>
-    </AppShell>
   );
 }
 

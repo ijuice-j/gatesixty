@@ -2,6 +2,35 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { invalidateCalendarCache } from "@/lib/google/calendar";
+
+/**
+ * Fetch fresh — drop this user's cached calendar months and re-render.
+ *
+ * The calendar is cached for five minutes (see lib/google/calendar.ts) because re-fetching
+ * it on every navigation was what made the app slow. That's safe precisely because this
+ * exists: add a block in Google, hit this, see it. A cache without a way to bust it is a
+ * bug waiting to be reported as "the app is showing stale data".
+ */
+export async function refreshCalendar() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated.");
+
+  const { data: cred } = await supabase
+    .from("google_credentials")
+    .select("refresh_token")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (cred?.refresh_token) invalidateCalendarCache(cred.refresh_token);
+
+  revalidatePath("/");
+  revalidatePath("/week");
+  revalidatePath("/month");
+}
 
 function emptyToNull(v: FormDataEntryValue | null): string | null {
   const s = typeof v === "string" ? v.trim() : "";

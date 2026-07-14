@@ -59,3 +59,25 @@ export function dateRange(start: string, count: number): string[] {
   }
   return out;
 }
+
+/**
+ * The calendar months a run of days touches, e.g. ["2026-06", "2026-07"].
+ *
+ * This is the cache key. Every view asks Google for whole months rather than for its own
+ * ragged window, so stepping through days — and switching Day/Week/Month — keeps landing
+ * on months already fetched, instead of shifting the range by one day each time and
+ * missing every single time.
+ */
+export function monthsSpanned(dates: string[]): string[] {
+  return [...new Set(dates.map((d) => d.slice(0, 7)))];
+}
+
+/** [start, end) instants for a "YYYY-MM", in the viewer's zone. */
+export function monthBounds(month: string, tz: string): { start: Date; end: Date } {
+  const [y, m] = month.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10); // m is 1-based → next month
+  return {
+    start: zonedDayStart(`${month}-01`, tz),
+    end: zonedDayStart(next, tz),
+  };
+}

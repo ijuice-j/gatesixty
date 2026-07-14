@@ -76,19 +76,25 @@ export type GcalEvent = {
 // Transport
 // ---------------------------------------------------------------------------
 
-const TIMEOUT_MS = 10_000;
+// A retry must not become a hang. Three attempts at a 10s timeout meant a flaky
+// connection could stall a page render for THIRTY SECONDS before showing an error —
+// a "fix" that made the symptom worse. Keep each attempt short and cap the total: a
+// user would rather see "couldn't reach Google, try again" in 8s than a frozen page.
+const TIMEOUT_MS = 3_500;
 const ATTEMPTS = 3;
+const DEADLINE_MS = 8_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * fetch, with a timeout and a retry for the failures that are worth retrying.
+ * fetch, with a timeout, a total deadline, and a retry for the failures worth retrying.
  *
- * Retryable: a network-layer throw (Google unreachable), 429, and 5xx. Anything
- * else is a real answer from Google and retrying it just wastes time — a 401 is
- * still a 401 on the third go.
+ * Retryable: a network-layer throw (Google unreachable), 429, and 5xx. Anything else is
+ * a real answer from Google and retrying it just burns the user's time — a 401 is still
+ * a 401 on the third go.
  */
 async function request(url: string, init: RequestInit): Promise<Response> {
+  const started = Date.now();
   let lastCause: unknown;
 
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
@@ -102,28 +108,35 @@ async function request(url: string, init: RequestInit): Promise<Response> {
       // Google is up but asked us to back off, or fell over.
       if ((res.status === 429 || res.status >= 500) && attempt < ATTEMPTS) {
         const retryAfter = Number(res.headers.get("retry-after"));
-        await sleep(
+        const wait =
           Number.isFinite(retryAfter) && retryAfter > 0
-            ? Math.min(retryAfter * 1000, 5_000)
-            : backoff(attempt),
-        );
+            ? Math.min(retryAfter * 1000, 3_000)
+            : backoff(attempt);
+        if (!canRetry(started, wait)) return res;
+        await sleep(wait);
         continue;
       }
       return res;
     } catch (e) {
       // AbortSignal.timeout throws TimeoutError; undici throws TypeError("fetch failed").
       lastCause = (e as { cause?: unknown })?.cause ?? e;
-      if (attempt === ATTEMPTS) break;
-      await sleep(backoff(attempt));
+      const wait = backoff(attempt);
+      if (attempt === ATTEMPTS || !canRetry(started, wait)) break;
+      await sleep(wait);
     }
   }
 
   throw new GoogleUnreachableError(lastCause);
 }
 
-/** 300ms, 900ms — with jitter, so a flapping network doesn't get a thundering herd. */
+/** Is there room for another attempt inside the deadline? */
+function canRetry(started: number, wait: number): boolean {
+  return Date.now() - started + wait + TIMEOUT_MS <= DEADLINE_MS;
+}
+
+/** 250ms, 750ms — jittered, so a flapping network doesn't get a thundering herd. */
 function backoff(attempt: number): number {
-  return 300 * 3 ** (attempt - 1) + Math.random() * 200;
+  return 250 * 3 ** (attempt - 1) + Math.random() * 150;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +259,84 @@ export async function listCalendarEvents(
   }
 
   return events;
+}
+
+// ---------------------------------------------------------------------------
+// The month cache — why date navigation stopped being slow
+//
+// Every view was hitting Google on every render, and every arrow-click shifted the
+// window by a day, so the ranges never lined up and nothing could ever be reused.
+// Fetch by whole CALENDAR MONTH instead and the ranges collapse onto a handful of
+// stable keys: stepping through days, and switching Day → Week → Month, all land
+// inside months already in hand. First load pays for the month; the rest is free.
+//
+// Only the CALENDAR is cached — your plan, which changes rarely. The activity ledger
+// is never cached, so marking something done still shows up instantly.
+// ---------------------------------------------------------------------------
+
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_MAX = 24; // ~2 years of months across a couple of users; bounded, not clever
+
+type Cached = { events: GcalEvent[]; at: number };
+const monthCache = new Map<string, Cached>();
+
+const cacheKey = (refreshToken: string, month: string) => `${refreshToken}|${month}`;
+
+/** Drop every cached month for this user — what "Fetch fresh" calls. */
+export function invalidateCalendarCache(refreshToken: string): void {
+  for (const key of monthCache.keys()) {
+    if (key.startsWith(`${refreshToken}|`)) monthCache.delete(key);
+  }
+}
+
+/**
+ * Events across whole calendar months, cached.
+ *
+ * `months` are "YYYY-MM"; `bounds` maps a month to its [start, end) instants in the
+ * viewer's zone — the caller already owns the timezone machinery, so it hands that in
+ * rather than this module growing a second opinion about what a day is.
+ *
+ * `force` bypasses the cache (the Fetch fresh button) and refills it.
+ */
+export async function listCalendarEventsForMonths(
+  refreshToken: string,
+  months: string[],
+  bounds: (month: string) => { start: Date; end: Date },
+  force = false,
+): Promise<GcalEvent[]> {
+  const now = Date.now();
+  const out: GcalEvent[] = [];
+
+  for (const month of months) {
+    const key = cacheKey(refreshToken, month);
+    const hit = force ? undefined : monthCache.get(key);
+
+    if (hit && now - hit.at < CACHE_TTL_MS) {
+      out.push(...hit.events);
+      continue;
+    }
+
+    const { start, end } = bounds(month);
+    const events = await listCalendarEvents(refreshToken, start, end);
+
+    if (monthCache.size >= CACHE_MAX) {
+      // Evict the oldest. A Map iterates in insertion order, so the first key is it.
+      const oldest = monthCache.keys().next().value;
+      if (oldest) monthCache.delete(oldest);
+    }
+    monthCache.set(key, { events, at: now });
+    out.push(...events);
+  }
+
+  // A month boundary can hand the same instance back twice; the ledger keys on the
+  // event id, so a duplicate would double-count in the follow-through denominator.
+  const seen = new Set<string>();
+  return out.filter((e) => {
+    if (!e.id) return true;
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  });
 }
 
 /** Fallback accent when an event has no `colorId`. Matches the mobile app. */

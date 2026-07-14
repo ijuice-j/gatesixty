@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 const ZOOMS = [
   { href: "/", label: "Day" },
@@ -12,9 +12,15 @@ const ZOOMS = [
 /**
  * Day / Week / Month is a ZOOM level, not a destination — it's the same question
  * at three resolutions. So it reads as a segmented control, not as sidebar nav.
+ *
+ * It reads `?date` itself rather than taking it as a prop, because it's rendered from the
+ * layout — and a layout cannot see searchParams. Carrying the date across a zoom switch is
+ * what makes Day → Week land on the week containing the day you were looking at, instead of
+ * silently jumping you back to today.
  */
-export function ZoomNav({ date }: { date?: string }) {
+export function ZoomNav() {
   const pathname = usePathname();
+  const date = useSearchParams().get("date") ?? undefined;
   const q = date ? `?date=${date}` : "";
 
   return (
