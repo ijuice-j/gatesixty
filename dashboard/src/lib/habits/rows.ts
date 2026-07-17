@@ -3,7 +3,7 @@ import type { Habit, HabitEntry, HabitKind, HabitPeriod } from "./types";
 
 /** The columns each view selects. Shared so the two callers can't drift apart. */
 export const HABIT_COLS =
-  "id, name, kind, unit, target, period, color, sort_order, created_at, archived_at";
+  "id, name, kind, unit, target, period, color, sort_order, created_at, archived_at, target_effective_since";
 export const ENTRY_COLS = "habit_id, occurred_on, value, target_snapshot";
 
 const num = (v: unknown): number => (typeof v === "number" ? v : Number(v));
@@ -48,6 +48,13 @@ export function toHabit(r: Record<string, unknown>, tz: string): Habit {
     sort_order: num(r.sort_order),
     created_on: dateStringInTz(new Date(String(r.created_at)), tz),
     archived_on: dayOrNull(r.archived_at, tz),
+    // Already a `date`, viewer-local by construction (the app writes the viewer's own day),
+    // so unlike the timestamptz pair above it needs no zone spent on it — just like
+    // occurred_on.
+    target_effective_since:
+      r.target_effective_since === null || r.target_effective_since === undefined
+        ? null
+        : String(r.target_effective_since),
   };
 }
 

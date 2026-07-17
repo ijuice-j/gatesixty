@@ -26,3 +26,6 @@ dist/
 .vercel/
 *.tsbuildinfo
 .env*.local
+
+# Local DB exports / backups — contains user data, never commit
+/backups/

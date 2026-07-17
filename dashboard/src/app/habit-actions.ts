@@ -140,6 +140,9 @@ export async function createHabit(formData: FormData) {
     kind,
     unit,
     target,
+    // The day this target took effect — today, if it has one. Null stays null: an
+    // untracked habit has no goal to date from. See lib/habits/metrics dayTarget.
+    target_effective_since: target === null ? null : await viewerToday(),
     period,
     ...(/^#[0-9a-fA-F]{6}$/.test(color) ? { color } : {}),
   });
@@ -166,10 +169,11 @@ export async function updateHabit(formData: FormData) {
   const name = str(formData, "name");
   if (!name) throw new Error("Give it a name.");
 
-  // kind and period come from the row, never the form — see above.
+  // kind and period come from the row, never the form — see above. `target` comes too, to
+  // catch the untracked<->tracked transition that moves target_effective_since.
   const { data: current } = await supabase
     .from("habits")
-    .select("kind, period")
+    .select("kind, period, target")
     .eq("id", habitId)
     .maybeSingle();
   if (!current) throw new Error("No such habit.");
@@ -191,12 +195,27 @@ export async function updateHabit(formData: FormData) {
     unit = str(formData, "unit") || null;
   }
 
+  // Move target_effective_since only on the untracked<->tracked edge, and only then.
+  //   null -> a goal : it takes effect today; days before today stay un-judged.
+  //   a goal -> null : there's no goal to date from any more.
+  //   goal -> goal   : leave it. The start of tracking hasn't moved, and a no-entry day
+  //                    scores 0, which is below the old target and the new one alike.
+  const today = await viewerToday();
+  const wasTracked = current.target !== null;
+  const nowTracked = target !== null;
+  const effectiveSince =
+    !wasTracked && nowTracked ? { target_effective_since: today } : {};
+  const clearSince =
+    wasTracked && !nowTracked ? { target_effective_since: null } : {};
+
   const { error } = await supabase
     .from("habits")
     .update({
       name,
       target,
       unit,
+      ...effectiveSince,
+      ...clearSince,
       ...(/^#[0-9a-fA-F]{6}$/.test(color) ? { color } : {}),
     })
     .eq("id", habitId);
@@ -211,7 +230,6 @@ export async function updateHabit(formData: FormData) {
   // Without this, the most obvious edit there is quietly does nothing visible: add a
   // target to a habit you'd been tracking untracked, and today's entry keeps its null
   // snapshot, stays "untracked", and shows no bar. It reads as a broken save.
-  const today = await viewerToday();
   const unsettledFrom = current.period === "week" ? weekStartDate(today) : today;
 
   const { error: reErr } = await supabase

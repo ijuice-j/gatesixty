@@ -19,6 +19,13 @@ export type Habit = {
   unit: string | null;
   /** `null` = tracked but never scored. See HabitStatus.untracked. */
   target: number | null;
+  /**
+   * The viewer-local day the current `target` took effect; `null` exactly when there's no
+   * target. A no-entry day before this was lived under no goal and earns no verdict — it
+   * is what stops a goal you set today from reaching back and failing days that never had
+   * one. `target_snapshot` does this for logged days; this does it for the unlogged ones.
+   */
+  target_effective_since: string | null;
   period: HabitPeriod;
   color: string; // #RRGGBB
   sort_order: number;

@@ -33,6 +33,9 @@ const habit = (over: Partial<Habit> = {}): Habit => ({
   // Long dead — so every test that predates lifespan keeps asking what it asked.
   created_on: "2000-01-01",
   archived_on: null,
+  // Tracked since forever, so a no-entry day is judged exactly as it was before this
+  // column existed. The untracked-then-tracked tests set it explicitly.
+  target_effective_since: "2000-01-01",
   ...over,
 });
 
@@ -339,6 +342,44 @@ await test("a habit is judged only from the day it existed — a shorter denomin
   const dates = [MON, "2026-07-14", WED, THU];
   const rows = habitsOverRange([habit({ created_on: WED })], [], dates, [WEEK], SUN);
   eq(rows[0].judged, 2, "Wed and Thu only — declared on Wednesday");
+});
+
+console.log("\nhabits — a target does not reach back before it existed");
+
+await test("a no-entry day before the target took effect is UNTRACKED, not missed", () => {
+  // Created untracked in July, given a goal on Aug 1. July had no goal to miss.
+  const h = habit({ target: 8, created_on: "2026-07-01", target_effective_since: "2026-08-01" });
+  eq(one(h, [], WED, THU).status, "untracked", "the day was lived under no goal");
+});
+
+await test("the month rollup counts ZERO judged days before the target existed", () => {
+  // This is the reported bug: it used to render "0 of 31 days" and sort to the top.
+  const h = habit({ target: 8, created_on: "2026-07-01", target_effective_since: "2026-08-01" });
+  const july = Array.from({ length: 31 }, (_, i) => `2026-07-${String(i + 1).padStart(2, "0")}`);
+  const rows = habitsOverRange([h], [], july, [WEEK], "2026-08-10");
+  eq(rows[0].judged, 0, "not one July day was under a goal");
+  eq(rows[0].ratio, null, "renders — , never 0 of 31");
+});
+
+await test("a habit tracked FROM creation still misses days it wasn't logged", () => {
+  // The case a snapshot-only or entry-derived fix would silently break: a goal set at
+  // creation and never once logged must still read as missed, not as no-data.
+  const h = habit({ target: 15, created_on: MON, target_effective_since: MON });
+  eq(one(h, [], WED, THU).status, "missed", "had a goal Wednesday, logged nothing");
+});
+
+await test("raising a numeric target does not un-miss earlier no-entry days", () => {
+  // effective_since stays put on a goal->goal change; 0 is below the old target and new.
+  const h = habit({ target: 100, target_effective_since: "2000-01-01" });
+  eq(one(h, [], WED, THU).status, "missed", "0 of 100, day over");
+});
+
+await test("a weekly target does not reach into weeks before it took effect", () => {
+  const g = habit({
+    id: "g", period: "week", target: 3, unit: null,
+    created_on: "2026-07-01", target_effective_since: "2026-08-01",
+  });
+  eq(one(g, [], WED, NEXT_MON).status, "untracked", "the week Jul 13–19 had no target yet");
 });
 
 console.log("\ntime — a week belongs to the month its Monday falls in");

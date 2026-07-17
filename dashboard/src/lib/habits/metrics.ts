@@ -113,16 +113,32 @@ const entriesInWeek = (es: HabitEntry[], w: Week): HabitEntry[] =>
   es.filter((e) => e.occurred_on >= w.start && e.occurred_on <= w.end);
 
 /**
- * The target a DAY is judged against. With an entry present its snapshot wins outright,
- * null included; the habit's current target is the fallback for a day with nothing
- * frozen to judge against.
+ * The target a DAY is judged against.
+ *
+ * With an entry present its snapshot wins outright, null included. With no entry to freeze
+ * against, the habit's current target — but only from the day it took effect. A no-entry
+ * day before `target_effective_since` was lived under no goal (you added one later), and
+ * judging it against today's goal is the retroactive rewrite `target_snapshot` exists to
+ * forbid, for the one kind of day a snapshot can't cover.
  */
-const dayTarget = (onDay: HabitEntry | null, h: Habit): number | null =>
-  onDay ? onDay.target_snapshot : h.target;
+const dayTarget = (onDay: HabitEntry | null, h: Habit, date: string): number | null =>
+  onDay
+    ? onDay.target_snapshot
+    : h.target_effective_since !== null && date >= h.target_effective_since
+      ? h.target
+      : null;
 
-/** The target a WEEK is judged against. The same rule, read off the week's latest entry. */
-const weekTarget = (inWeek: HabitEntry[], h: Habit): number | null =>
-  inWeek.length ? latestSnapshot(inWeek) : h.target;
+/**
+ * The target a WEEK is judged against. The same rule, read off the week's latest entry —
+ * and for a no-entry week, the current target only if it was effective from the week's
+ * start, matching isLiveAllWeek's whole-week test.
+ */
+const weekTarget = (inWeek: HabitEntry[], h: Habit, weekStart: string): number | null =>
+  inWeek.length
+    ? latestSnapshot(inWeek)
+    : h.target_effective_since !== null && weekStart >= h.target_effective_since
+      ? h.target
+      : null;
 
 type Indexed = { all: HabitEntry[]; byDay: Map<string, HabitEntry> };
 const NO_ENTRIES: Indexed = { all: [], byDay: new Map() };
@@ -196,7 +212,9 @@ export function habitsForDate(
       const progress = weekly
         ? inWeek.reduce((sum, e) => sum + e.value, 0)
         : (onDay?.value ?? 0);
-      const target = weekly ? weekTarget(inWeek, habit) : dayTarget(onDay, habit);
+      const target = weekly
+        ? weekTarget(inWeek, habit, week.start)
+        : dayTarget(onDay, habit, date);
 
       return {
         habit,
@@ -342,7 +360,7 @@ export function habitsForWeek(
 
     if (habit.period === "week") {
       const inWeek = entriesInWeek(mine.all, week);
-      const target = weekTarget(inWeek, habit);
+      const target = weekTarget(inWeek, habit, week.start);
       const progress = inWeek.reduce((sum, e) => sum + e.value, 0);
       out.weekly.push({
         habit,
@@ -359,7 +377,7 @@ export function habitsForWeek(
     const cells: HabitCell[] = dates.map((date) => {
       const onDay = mine.byDay.get(date) ?? null;
       if (!isLive(habit, date)) return { date, status: null, value: null };
-      const target = dayTarget(onDay, habit);
+      const target = dayTarget(onDay, habit, date);
       return {
         date,
         status: statusOf(habit.period, onDay?.value ?? 0, target, date, today, week.end),
@@ -448,7 +466,7 @@ export function habitsOverRange(
       for (const week of weeks) {
         if (!isLiveAllWeek(habit, week)) continue;
         const inWeek = entriesInWeek(mine.all, week);
-        const target = weekTarget(inWeek, habit);
+        const target = weekTarget(inWeek, habit, week.start);
         const progress = inWeek.reduce((sum, e) => sum + e.value, 0);
         const status = statusOf(habit.period, progress, target, week.start, today, week.end);
         if (status === "kept" || status === "missed") outcomes.push(status === "kept");
@@ -457,7 +475,7 @@ export function habitsOverRange(
       for (const date of dates) {
         if (!isLive(habit, date)) continue;
         const onDay = mine.byDay.get(date) ?? null;
-        const target = dayTarget(onDay, habit);
+        const target = dayTarget(onDay, habit, date);
         const status = statusOf(
           habit.period,
           onDay?.value ?? 0,
