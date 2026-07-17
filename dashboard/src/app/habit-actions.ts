@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { dateStringInTz, resolveViewerTimeZone, weekStartDate } from "@/lib/time";
+import type { HabitSpan } from "@/lib/habits/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -134,6 +135,8 @@ export async function createHabit(formData: FormData) {
     unit = str(formData, "unit") || null;
   }
 
+  const today = await viewerToday();
+
   const { error } = await supabase.from("habits").insert({
     user_id: user.id,
     name,
@@ -142,7 +145,10 @@ export async function createHabit(formData: FormData) {
     target,
     // The day this target took effect — today, if it has one. Null stays null: an
     // untracked habit has no goal to date from. See lib/habits/metrics dayTarget.
-    target_effective_since: target === null ? null : await viewerToday(),
+    target_effective_since: target === null ? null : today,
+    // The first active span, open from today. The DB trigger would fill this from
+    // created_at if omitted, but writing it here keeps it viewer-local rather than UTC.
+    active_spans: [{ start: today, end: null }] satisfies HabitSpan[],
     period,
     ...(/^#[0-9a-fA-F]{6}$/.test(color) ? { color } : {}),
   });
@@ -248,6 +254,12 @@ export async function updateHabit(formData: FormData) {
  * Never a delete: `habit_entries` cascades, so removing the definition would silently
  * take every value you ever logged with it. Archiving keeps the history and just stops
  * asking about it.
+ *
+ * The pause is recorded, not erased. Archiving CLOSES the open active span at today;
+ * restoring OPENS a fresh one from today, leaving the gap between visible. Without that,
+ * a habit paused for a season and brought back would read as live the whole time and hand
+ * you a miss for every day of a break you chose to take — the bug this shape exists to
+ * prevent. `archived_at` stays too: it's still the flag the manage page splits on.
  */
 export async function setHabitArchived(formData: FormData) {
   const { supabase } = await client();
@@ -255,10 +267,36 @@ export async function setHabitArchived(formData: FormData) {
   const habitId = str(formData, "habit_id");
   if (!habitId) throw new Error("Missing habit.");
   const archived = str(formData, "archived") === "true";
+  const today = await viewerToday();
+
+  const { data: current } = await supabase
+    .from("habits")
+    .select("active_spans")
+    .eq("id", habitId)
+    .maybeSingle();
+  if (!current) throw new Error("No such habit.");
+
+  const spans = (current.active_spans as HabitSpan[] | null) ?? [];
+  const last = spans[spans.length - 1];
+  let nextSpans: HabitSpan[];
+  if (archived) {
+    // Close the open span at today. If none is open, this is a no-op — you can't archive
+    // something already archived, and the UI never offers it.
+    nextSpans =
+      last && last.end === null
+        ? [...spans.slice(0, -1), { ...last, end: today }]
+        : spans;
+  } else {
+    // Restore: reopen from today, unless a span is already open (nothing to bring back).
+    nextSpans = last && last.end === null ? spans : [...spans, { start: today, end: null }];
+  }
 
   const { error } = await supabase
     .from("habits")
-    .update({ archived_at: archived ? new Date().toISOString() : null })
+    .update({
+      archived_at: archived ? new Date().toISOString() : null,
+      active_spans: nextSpans,
+    })
     .eq("id", habitId);
   if (error) throw new Error(`Could not update: ${error.message}`);
 
