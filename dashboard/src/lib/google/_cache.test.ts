@@ -9,12 +9,12 @@ process.env.GOOGLE_CLIENT_ID = "id";
 process.env.GOOGLE_CLIENT_SECRET = "secret";
 
 let events = 0;
-let tokens = 0;
 
 globalThis.fetch = (async (url: string | URL) => {
   const u = String(url);
   if (u.includes("token")) {
-    tokens++;
+    // Counted in _retry.test.ts, which is where token round-trips are the subject.
+    // Here only the EVENT calls matter — that's what month-caching is meant to stop.
     return new Response(JSON.stringify({ access_token: "at", expires_in: 3600 }), { status: 200 });
   }
   events++;
