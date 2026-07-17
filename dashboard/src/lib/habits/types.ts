@@ -35,6 +35,13 @@ export type Habit = {
    */
   target_effective_since: string | null;
   period: HabitPeriod;
+  /**
+   * The weekdays a DAILY habit is scheduled on, Mon-first (0=Mon … 6=Sun, like
+   * lib/time weekdayIndex). `null` = every day. A weekday not in the set is *off* — no
+   * verdict, the same as a rest day — not a miss. Meaningful only when `period` is `day`;
+   * the week is a weekly habit's own unit. Fixed at creation, like kind and period.
+   */
+  weekdays: number[] | null;
   color: string; // #RRGGBB
   sort_order: number;
   /** The day you declared it, viewer-local — the first span's start. Nothing before it is

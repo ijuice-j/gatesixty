@@ -118,6 +118,19 @@ export async function createHabit(formData: FormData) {
   const period = str(formData, "period") || "day";
   if (period !== "day" && period !== "week") throw new Error("Pick day or week.");
 
+  // "3,0,2" → [0,2,3]. A weekly quota schedules by the week, so weekdays belong only to a
+  // daily habit; the DB CHECK enforces the same. Empty → null = every day.
+  const rawDays = str(formData, "weekdays");
+  let weekdays: number[] | null = null;
+  if (rawDays) {
+    if (period !== "day") throw new Error("Weekdays only apply to a daily habit.");
+    const parsed = [...new Set(rawDays.split(",").map((s) => Number(s.trim())))];
+    if (parsed.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+      throw new Error("That isn't a valid set of weekdays.");
+    }
+    weekdays = parsed.sort((a, b) => a - b);
+  }
+
   const color = str(formData, "color");
 
   let target: number | null = null;
@@ -150,6 +163,7 @@ export async function createHabit(formData: FormData) {
     // created_at if omitted, but writing it here keeps it viewer-local rather than UTC.
     active_spans: [{ start: today, end: null }] satisfies HabitSpan[],
     period,
+    weekdays,
     ...(/^#[0-9a-fA-F]{6}$/.test(color) ? { color } : {}),
   });
   if (error) throw new Error(`Could not add: ${error.message}`);

@@ -17,12 +17,19 @@ import { COLORS, ColorPicker } from "./habit-colors";
  * doesn't. That put Target's helper level with Unit's input and knocked the two boxes a
  * row out of step. Grid cells share rows by construction, so it can't drift again.
  */
+/** The three repetition modes. "day" and "weekdays" are both `period='day'` underneath —
+ *  the day is the unit of judgment either way — differing only in which weekdays count. */
+type Mode = "day" | "weekdays" | "week";
+
 export function HabitForm() {
   const [kind, setKind] = useState<"count" | "check">("count");
-  const [period, setPeriod] = useState<"day" | "week">("day");
+  const [mode, setMode] = useState<Mode>("day");
+  const [days, setDays] = useState<number[]>([]);
   const [color, setColor] = useState(COLORS[0]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const needsDays = mode === "weekdays" && days.length === 0;
 
   return (
     <form
@@ -33,7 +40,8 @@ export function HabitForm() {
         try {
           await createHabit(fd);
           setKind("count");
-          setPeriod("day");
+          setMode("day");
+          setDays([]);
           setColor(COLORS[0]);
         } catch (e) {
           setError(e instanceof Error ? e.message : "Could not add that.");
@@ -43,6 +51,10 @@ export function HabitForm() {
       }}
     >
       <input type="hidden" name="color" value={color} />
+      {/* Two UI modes collapse to one period: the day is the unit for both "Day" and
+          "Certain days". `weekdays` is what tells them apart, server-side. */}
+      <input type="hidden" name="period" value={mode === "week" ? "week" : "day"} />
+      <input type="hidden" name="weekdays" value={mode === "weekdays" ? days.join(",") : ""} />
 
       <div className="grid gap-4">
         <div className="ds-field max-w-md">
@@ -71,16 +83,29 @@ export function HabitForm() {
             ]}
           />
           <RadioField
-            label="Every"
-            name="period"
-            value={period}
-            onChange={(v) => setPeriod(v as "day" | "week")}
+            label="Repeat"
+            name="mode"
+            value={mode}
+            onChange={(v) => setMode(v as Mode)}
             options={[
               { value: "day", label: "Day" },
+              { value: "weekdays", label: "Certain days" },
               { value: "week", label: "Week" },
             ]}
           />
         </div>
+
+        {/* Only when the schedule is specific weekdays. A weekly quota schedules by the
+            week, and a plain daily habit is every day — neither needs a day picker. */}
+        {mode === "weekdays" && (
+          <div className="ds-field max-w-md">
+            <span className="ds-label">On</span>
+            <WeekdayPicker value={days} onChange={setDays} />
+            <p className="ds-helper">
+              Picked days are scheduled; the rest are off — not misses. Fixed once added.
+            </p>
+          </div>
+        )}
 
         {/* Only a counted habit has a goal or a unit — a check habit's target is 1 by
             definition, and the database rejects a unit on one. */}
@@ -122,8 +147,12 @@ export function HabitForm() {
       <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--color-kumo-line)] pt-4">
         <ColorPicker value={color} onChange={setColor} />
 
-        <button type="submit" disabled={busy} className="ds-btn ds-btn--emphasis">
-          {busy ? "Adding…" : "Add habit"}
+        <button
+          type="submit"
+          disabled={busy || needsDays}
+          className="ds-btn ds-btn--emphasis"
+        >
+          {busy ? "Adding…" : needsDays ? "Pick a day" : "Add habit"}
         </button>
       </div>
 
@@ -133,6 +162,59 @@ export function HabitForm() {
         </p>
       )}
     </form>
+  );
+}
+
+/** Mon-first, matching lib/time weekdayIndex (0=Mon … 6=Sun). Two Sundays would confuse,
+ *  so the labels carry the full name in the aria-label. */
+const WEEKDAYS = [
+  { i: 0, short: "M", name: "Monday" },
+  { i: 1, short: "T", name: "Tuesday" },
+  { i: 2, short: "W", name: "Wednesday" },
+  { i: 3, short: "T", name: "Thursday" },
+  { i: 4, short: "F", name: "Friday" },
+  { i: 5, short: "S", name: "Saturday" },
+  { i: 6, short: "S", name: "Sunday" },
+];
+
+/**
+ * Seven toggles for the weekdays a habit repeats on — the ColorPicker pattern, one button
+ * per day, `aria-pressed` carrying the state. The selection is a set; order doesn't matter
+ * and the metrics sort it for display.
+ */
+function WeekdayPicker({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (days: number[]) => void;
+}) {
+  const toggle = (i: number) =>
+    onChange(value.includes(i) ? value.filter((d) => d !== i) : [...value, i]);
+
+  return (
+    <div className="flex items-center gap-1.5" role="group" aria-label="Repeat on">
+      {WEEKDAYS.map(({ i, short, name }) => {
+        const on = value.includes(i);
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => toggle(i)}
+            aria-label={name}
+            aria-pressed={on}
+            className={
+              "size-9 rounded-full text-sm font-medium tabular-nums transition " +
+              (on
+                ? "bg-[var(--color-kumo-brand)] text-[var(--text-color-kumo-inverse)]"
+                : "bg-[var(--color-kumo-fill)] text-[var(--text-color-kumo-subtle)] hover:bg-[var(--color-kumo-fill-hover)]")
+            }
+          >
+            {short}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

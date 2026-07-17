@@ -3,7 +3,7 @@ import type { Habit, HabitEntry, HabitKind, HabitPeriod, HabitSpan } from "./typ
 
 /** The columns each view selects. Shared so the two callers can't drift apart. */
 export const HABIT_COLS =
-  "id, name, kind, unit, target, period, color, sort_order, created_at, archived_at, target_effective_since, active_spans";
+  "id, name, kind, unit, target, period, color, sort_order, created_at, archived_at, target_effective_since, active_spans, weekdays";
 export const ENTRY_COLS = "habit_id, occurred_on, value, target_snapshot";
 
 const num = (v: unknown): number => (typeof v === "number" ? v : Number(v));
@@ -74,6 +74,8 @@ export function toHabit(r: Record<string, unknown>, tz: string): Habit {
       r.target_effective_since === null || r.target_effective_since === undefined
         ? null
         : String(r.target_effective_since),
+    // Postgres smallint[] → number[]; null (every day) stays null.
+    weekdays: Array.isArray(r.weekdays) ? r.weekdays.map(Number) : null,
   };
 }
 
