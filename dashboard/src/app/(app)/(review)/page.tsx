@@ -12,10 +12,18 @@ import {
   type ReconstructedDay,
 } from "@/lib/activity/range";
 import { followThrough, totalFollowThrough } from "@/lib/activity/metrics";
-import { dateStringInTz, shiftDate, resolveViewerTimeZone } from "@/lib/time";
+import { habitsForDate, scoreDay } from "@/lib/habits/metrics";
+import { HABIT_COLS, ENTRY_COLS, toHabit, toEntry } from "@/lib/habits/rows";
+import {
+  dateStringInTz,
+  shiftDate,
+  weekStartDate,
+  resolveViewerTimeZone,
+} from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "../../timezone-sync";
 import { DayList } from "../../day-list";
+import { HabitList } from "../../habit-list";
 import { MetricHeader } from "../../metric-header";
 import { ReconnectBanner, LoadErrorBanner } from "../../banners";
 
@@ -56,22 +64,48 @@ export default async function Home({
   const from = shiftDate(date, -(TRAILING - 1));
   const dates = dateRange(from, TRAILING);
 
-  // All three Supabase reads fire together. This used to run getUser() and THEN the two
-  // queries, stacking network round-trips for no reason: RLS already scopes both tables to
-  // their owner, so neither query needs to wait for the user id to come back.
+  // A weekly habit is judged on its whole week, so Monday's row has to see Friday's log.
+  // That's the entry window — one indexed week, not the months a streak would need.
+  const week = { start: weekStartDate(date), end: shiftDate(weekStartDate(date), 6) };
+
+  // All the Supabase reads fire together. This used to run getUser() and THEN the
+  // queries, stacking network round-trips for no reason: RLS already scopes every table
+  // to its owner, so none of them needs to wait for the user id to come back.
   const supabase = await createClient();
-  const [user, { data: cred }, { data: logData }] = await Promise.all([
-    getUser(), // cache()'d — the layout already asked, so this costs nothing
-    supabase.from("google_credentials").select("refresh_token").maybeSingle(),
-    supabase
-      .from("activity_logs")
-      .select(
-        "gcal_event_id, title, done, occurred_on, planned_start, planned_end, color, ended_at",
-      )
-      .gte("occurred_on", from)
-      .lte("occurred_on", date),
-  ]);
+  const [user, { data: cred }, { data: logData }, { data: habitData }, { data: entryData }] =
+    await Promise.all([
+      getUser(), // cache()'d — the layout already asked, so this costs nothing
+      supabase.from("google_credentials").select("refresh_token").maybeSingle(),
+      supabase
+        .from("activity_logs")
+        .select(
+          "gcal_event_id, title, done, occurred_on, planned_start, planned_end, color, ended_at",
+        )
+        .gte("occurred_on", from)
+        .lte("occurred_on", date),
+      supabase
+        .from("habits")
+        .select(HABIT_COLS)
+        .is("archived_at", null)
+        .order("sort_order")
+        .order("created_at"),
+      supabase
+        .from("habit_entries")
+        .select(ENTRY_COLS)
+        .gte("occurred_on", week.start)
+        .lte("occurred_on", week.end),
+    ]);
   if (!user) redirect("/login");
+
+  // Habits need no calendar and no Google token, so they're built before the try/catch
+  // below and render even when the calendar can't load.
+  const habitRows = habitsForDate(
+    (habitData ?? []).map(toHabit),
+    (entryData ?? []).map(toEntry),
+    date,
+    today,
+    week,
+  );
 
   const logs = (logData ?? []) as ActivityLog[];
 
@@ -152,6 +186,15 @@ export default async function Home({
       {loadError && <LoadErrorBanner message={loadError} />}
 
       {!needsReconnect && !loadError && <DayList items={items} date={date} tz={tz} />}
+
+      {/* Outside the calendar guards on purpose: a habit has no Google event behind it,
+          so a dead token or a failed fetch is no reason to stop you logging pushups. */}
+      <HabitList
+        rows={habitRows}
+        score={scoreDay(habitRows)}
+        date={date}
+        editable={date <= today}
+      />
     </div>
   );
 }

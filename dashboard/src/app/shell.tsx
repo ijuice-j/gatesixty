@@ -21,6 +21,16 @@ const NAV = [
       </svg>
     ),
   },
+  {
+    href: "/habits",
+    match: ["/habits"],
+    label: "Habits",
+    icon: (
+      <svg {...ICON} aria-hidden>
+        <path d="M3 8.5L6.25 11.75L13 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
 ];
 
 /**
