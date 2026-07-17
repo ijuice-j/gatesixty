@@ -21,6 +21,46 @@ export class GoogleAuthExpiredError extends Error {
   }
 }
 
+/**
+ * Google couldn't be reached — DNS, TLS, a reset connection, a timeout.
+ *
+ * This exists because Node's fetch throws a TypeError whose message is the
+ * famously useless string "fetch failed", with the real cause nested in
+ * `.cause`. That string was going straight to the UI. An error must say what
+ * broke and what to do about it.
+ */
+export class GoogleUnreachableError extends Error {
+  constructor(cause?: unknown) {
+    super(
+      `Couldn't reach Google Calendar${detail(cause)}. ` +
+        `This is a network problem, not your data — try again in a moment.`,
+    );
+    this.name = "GoogleUnreachableError";
+    this.cause = cause;
+  }
+}
+
+/** Dig the real reason out of undici's nested cause, if it left us one. */
+function detail(cause: unknown): string {
+  const code = (cause as { code?: string } | undefined)?.code;
+  switch (code) {
+    case "ENOTFOUND":
+    case "EAI_AGAIN":
+      return " (DNS lookup failed)";
+    case "ECONNRESET":
+      return " (connection reset)";
+    case "ECONNREFUSED":
+      return " (connection refused)";
+    case "ETIMEDOUT":
+    case "UND_ERR_CONNECT_TIMEOUT":
+    case "UND_ERR_HEADERS_TIMEOUT":
+    case "UND_ERR_BODY_TIMEOUT":
+      return " (timed out)";
+    default:
+      return code ? ` (${code})` : "";
+  }
+}
+
 /** One Calendar event (only the fields the dashboard reads). */
 export type GcalEvent = {
   id?: string;
@@ -32,8 +72,93 @@ export type GcalEvent = {
   end?: { dateTime?: string; date?: string };
 };
 
-/** Exchange the stored refresh token for a short-lived access token. */
+// ---------------------------------------------------------------------------
+// Transport
+// ---------------------------------------------------------------------------
+
+// A retry must not become a hang. Three attempts at a 10s timeout meant a flaky
+// connection could stall a page render for THIRTY SECONDS before showing an error —
+// a "fix" that made the symptom worse. Keep each attempt short and cap the total: a
+// user would rather see "couldn't reach Google, try again" in 8s than a frozen page.
+const TIMEOUT_MS = 3_500;
+const ATTEMPTS = 3;
+const DEADLINE_MS = 8_000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * fetch, with a timeout, a total deadline, and a retry for the failures worth retrying.
+ *
+ * Retryable: a network-layer throw (Google unreachable), 429, and 5xx. Anything else is
+ * a real answer from Google and retrying it just burns the user's time — a 401 is still
+ * a 401 on the third go.
+ */
+async function request(url: string, init: RequestInit): Promise<Response> {
+  const started = Date.now();
+  let lastCause: unknown;
+
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, {
+        ...init,
+        cache: "no-store",
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+
+      // Google is up but asked us to back off, or fell over.
+      if ((res.status === 429 || res.status >= 500) && attempt < ATTEMPTS) {
+        const retryAfter = Number(res.headers.get("retry-after"));
+        const wait =
+          Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.min(retryAfter * 1000, 3_000)
+            : backoff(attempt);
+        if (!canRetry(started, wait)) return res;
+        await sleep(wait);
+        continue;
+      }
+      return res;
+    } catch (e) {
+      // AbortSignal.timeout throws TimeoutError; undici throws TypeError("fetch failed").
+      lastCause = (e as { cause?: unknown })?.cause ?? e;
+      const wait = backoff(attempt);
+      if (attempt === ATTEMPTS || !canRetry(started, wait)) break;
+      await sleep(wait);
+    }
+  }
+
+  throw new GoogleUnreachableError(lastCause);
+}
+
+/** Is there room for another attempt inside the deadline? */
+function canRetry(started: number, wait: number): boolean {
+  return Date.now() - started + wait + TIMEOUT_MS <= DEADLINE_MS;
+}
+
+/** 250ms, 750ms — jittered, so a flapping network doesn't get a thundering herd. */
+function backoff(attempt: number): number {
+  return 250 * 3 ** (attempt - 1) + Math.random() * 150;
+}
+
+// ---------------------------------------------------------------------------
+// Access tokens
+// ---------------------------------------------------------------------------
+
+/**
+ * Access tokens live an hour, and every page render needs one. Exchanging the
+ * refresh token on each render doubled the number of round-trips to Google —
+ * and so doubled the chance of a "couldn't reach Google" on any given load, for
+ * a token we already had. Cache it in-process until shortly before it expires.
+ *
+ * Per-instance and lost on restart, which is fine: the worst case is one extra
+ * exchange, exactly what we do today.
+ */
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+const EXPIRY_MARGIN_MS = 60_000; // refresh a minute early rather than race the clock
+
 async function getAccessToken(refreshToken: string): Promise<string> {
+  const cached = tokenCache.get(refreshToken);
+  if (cached && cached.expiresAt > Date.now()) return cached.token;
+
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
@@ -42,7 +167,7 @@ async function getAccessToken(refreshToken: string): Promise<string> {
     );
   }
 
-  const res = await fetch(TOKEN_ENDPOINT, {
+  const res = await request(TOKEN_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -51,25 +176,46 @@ async function getAccessToken(refreshToken: string): Promise<string> {
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
-    cache: "no-store",
   });
 
   if (!res.ok) {
     // invalid_grant (400) / unauthorized (401) => access was revoked.
-    if (res.status === 400 || res.status === 401) throw new GoogleAuthExpiredError();
+    if (res.status === 400 || res.status === 401) {
+      tokenCache.delete(refreshToken);
+      throw new GoogleAuthExpiredError();
+    }
     throw new Error(`Google token exchange failed (${res.status}).`);
   }
 
-  const json = (await res.json()) as { access_token?: string };
+  const json = (await res.json()) as { access_token?: string; expires_in?: number };
   if (!json.access_token) {
     throw new Error("Google token exchange returned no access token.");
   }
+
+  const ttl = (json.expires_in ?? 3600) * 1000;
+  tokenCache.set(refreshToken, {
+    token: json.access_token,
+    expiresAt: Date.now() + Math.max(ttl - EXPIRY_MARGIN_MS, 0),
+  });
   return json.access_token;
 }
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+const PAGE_SIZE = 250;
+const MAX_PAGES = 12; // 3000 events — a backstop, not a real ceiling
 
 /**
  * List events on the primary calendar in [timeMin, timeMax). Recurring events
  * are expanded to single instances so each maps to one ledger occurrence.
+ *
+ * PAGINATED, and that matters: the month view asks for two months at a time, and
+ * at a handful of blocks a day that comfortably exceeds one 250-event page. A
+ * single un-paginated call would silently return the first 250 and compute your
+ * follow-through against partial data — a wrong number with no error, which is
+ * worse than a failed load.
  */
 export async function listCalendarEvents(
   refreshToken: string,
@@ -77,27 +223,120 @@ export async function listCalendarEvents(
   timeMax: Date,
 ): Promise<GcalEvent[]> {
   const accessToken = await getAccessToken(refreshToken);
+  const events: GcalEvent[] = [];
+  let pageToken: string | undefined;
 
-  const params = new URLSearchParams({
-    timeMin: timeMin.toISOString(),
-    timeMax: timeMax.toISOString(),
-    singleEvents: "true",
-    orderBy: "startTime",
-    maxResults: "250",
-  });
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams({
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString(),
+      singleEvents: "true",
+      orderBy: "startTime",
+      maxResults: String(PAGE_SIZE),
+    });
+    if (pageToken) params.set("pageToken", pageToken);
 
-  const res = await fetch(`${EVENTS_ENDPOINT}?${params}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: "no-store",
-  });
+    const res = await request(`${EVENTS_ENDPOINT}?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
 
-  if (!res.ok) {
-    if (res.status === 401) throw new GoogleAuthExpiredError();
-    throw new Error(`Google Calendar request failed (${res.status}).`);
+    if (!res.ok) {
+      if (res.status === 401) {
+        tokenCache.delete(refreshToken); // the cached token is no good
+        throw new GoogleAuthExpiredError();
+      }
+      throw new Error(`Google Calendar request failed (${res.status}).`);
+    }
+
+    const json = (await res.json()) as {
+      items?: GcalEvent[];
+      nextPageToken?: string;
+    };
+    if (json.items?.length) events.push(...json.items);
+
+    pageToken = json.nextPageToken;
+    if (!pageToken) break;
   }
 
-  const json = (await res.json()) as { items?: GcalEvent[] };
-  return json.items ?? [];
+  return events;
+}
+
+// ---------------------------------------------------------------------------
+// The month cache — why date navigation stopped being slow
+//
+// Every view was hitting Google on every render, and every arrow-click shifted the
+// window by a day, so the ranges never lined up and nothing could ever be reused.
+// Fetch by whole CALENDAR MONTH instead and the ranges collapse onto a handful of
+// stable keys: stepping through days, and switching Day → Week → Month, all land
+// inside months already in hand. First load pays for the month; the rest is free.
+//
+// Only the CALENDAR is cached — your plan, which changes rarely. The activity ledger
+// is never cached, so marking something done still shows up instantly.
+// ---------------------------------------------------------------------------
+
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_MAX = 24; // ~2 years of months across a couple of users; bounded, not clever
+
+type Cached = { events: GcalEvent[]; at: number };
+const monthCache = new Map<string, Cached>();
+
+const cacheKey = (refreshToken: string, month: string) => `${refreshToken}|${month}`;
+
+/** Drop every cached month for this user — what "Fetch fresh" calls. */
+export function invalidateCalendarCache(refreshToken: string): void {
+  for (const key of monthCache.keys()) {
+    if (key.startsWith(`${refreshToken}|`)) monthCache.delete(key);
+  }
+}
+
+/**
+ * Events across whole calendar months, cached.
+ *
+ * `months` are "YYYY-MM"; `bounds` maps a month to its [start, end) instants in the
+ * viewer's zone — the caller already owns the timezone machinery, so it hands that in
+ * rather than this module growing a second opinion about what a day is.
+ *
+ * `force` bypasses the cache (the Fetch fresh button) and refills it.
+ */
+export async function listCalendarEventsForMonths(
+  refreshToken: string,
+  months: string[],
+  bounds: (month: string) => { start: Date; end: Date },
+  force = false,
+): Promise<GcalEvent[]> {
+  const now = Date.now();
+  const out: GcalEvent[] = [];
+
+  for (const month of months) {
+    const key = cacheKey(refreshToken, month);
+    const hit = force ? undefined : monthCache.get(key);
+
+    if (hit && now - hit.at < CACHE_TTL_MS) {
+      out.push(...hit.events);
+      continue;
+    }
+
+    const { start, end } = bounds(month);
+    const events = await listCalendarEvents(refreshToken, start, end);
+
+    if (monthCache.size >= CACHE_MAX) {
+      // Evict the oldest. A Map iterates in insertion order, so the first key is it.
+      const oldest = monthCache.keys().next().value;
+      if (oldest) monthCache.delete(oldest);
+    }
+    monthCache.set(key, { events, at: now });
+    out.push(...events);
+  }
+
+  // A month boundary can hand the same instance back twice; the ledger keys on the
+  // event id, so a duplicate would double-count in the follow-through denominator.
+  const seen = new Set<string>();
+  return out.filter((e) => {
+    if (!e.id) return true;
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  });
 }
 
 /** Fallback accent when an event has no `colorId`. Matches the mobile app. */

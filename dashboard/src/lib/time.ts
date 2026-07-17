@@ -91,6 +91,29 @@ export function weekStartDate(dateStr: string): string {
   return shiftDate(dateStr, -((dow + 6) % 7)); // days back to Monday
 }
 
+/** The 1st (`YYYY-MM-DD`) of the month containing `dateStr`. */
+export function monthStartDate(dateStr: string): string {
+  return `${dateStr.slice(0, 7)}-01`;
+}
+
+/** How many days the month containing `dateStr` has. */
+export function daysInMonth(dateStr: string): number {
+  const [y, m] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate(); // day 0 of next month = last of this
+}
+
+/** Shift by whole months, clamping the day (31 Jan − 1 month → 31 Dec, not 3 Mar). */
+export function shiftMonth(dateStr: string, months: number): string {
+  const [y, m] = dateStr.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + months, 1));
+  return d.toISOString().slice(0, 10);
+}
+
+/** 0 = Monday … 6 = Sunday. The grid starts on Monday, like weekStartDate. */
+export function weekdayIndex(dateStr: string): number {
+  return (new Date(`${dateStr}T00:00:00Z`).getUTCDay() + 6) % 7;
+}
+
 /**
  * Resolve the viewer's timezone from the raw `tz` cookie. `resolved` is false
  * when the cookie is absent or invalid — callers render a placeholder and let

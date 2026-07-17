@@ -11,6 +11,10 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // The *.test.ts files run under `node --experimental-strip-types`, which resolves the
+    // real on-disk path — so they import "./calendar.ts" with the extension. Safe with
+    // noEmit: nothing is compiled, tsc only type-checks.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [
