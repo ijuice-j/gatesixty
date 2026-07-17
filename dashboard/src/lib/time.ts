@@ -115,6 +115,34 @@ export function weekdayIndex(dateStr: string): number {
 }
 
 /**
+ * The Mon–Sun weeks belonging to the month containing `dateStr`.
+ *
+ * A week belongs to the month its MONDAY falls in. The week straddling the 1st is the
+ * previous month's; the week straddling the last is this one's, spilling end and all.
+ * Every week lands in exactly one month: none judged twice, none unjudged.
+ *
+ * The alternative — every week that OVERLAPS the month — counts a straddling week in
+ * both, and twelve months of "weeks kept" then add up to more weeks than the year has.
+ *
+ * Ascending. The last one's `end` is usually NOT in the month, which is exactly what a
+ * weekly habit's entry window has to be built FROM rather than around. Never empty: the
+ * shortest month there is holds four Mondays.
+ */
+export function weeksOfMonth(dateStr: string): { start: string; end: string }[] {
+  const first = monthStartDate(dateStr);
+  const last = shiftDate(shiftMonth(first, 1), -1);
+
+  let monday = weekStartDate(first);
+  if (monday < first) monday = shiftDate(monday, 7); // that week is last month's
+
+  const weeks: { start: string; end: string }[] = [];
+  for (; monday <= last; monday = shiftDate(monday, 7)) {
+    weeks.push({ start: monday, end: shiftDate(monday, 6) });
+  }
+  return weeks;
+}
+
+/**
  * Resolve the viewer's timezone from the raw `tz` cookie. `resolved` is false
  * when the cookie is absent or invalid — callers render a placeholder and let
  * <TimezoneSync> report the real zone, avoiding a UTC-then-refresh double fetch.

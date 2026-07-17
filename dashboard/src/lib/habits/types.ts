@@ -22,6 +22,24 @@ export type Habit = {
   period: HabitPeriod;
   color: string; // #RRGGBB
   sort_order: number;
+  /** The day you declared it, viewer-local. Nothing before it is asked about. */
+  created_on: string;
+  /**
+   * The day you archived it, viewer-local; `null` while it's live.
+   *
+   * A habit is live over `[created_on, archived_on)` — half-open, the same shape as
+   * zonedDayRange and every `.gte(x).lt(y)` in the app. The exclusive end means archiving
+   * stops the asking the moment you click it: a habit archived this morning is off today's
+   * list rather than sitting there waiting to hand you a miss at midnight.
+   *
+   * Be honest about the cost — it cuts both ways. Log your pushups at 9am and archive at
+   * 3pm and the day drops the habit, the 50 you logged, and the `kept` you earned for it.
+   * That is the behaviour the old `.is("archived_at", null)` query filter had too, so
+   * nothing regressed here; it's the price of the archive day belonging to neither side.
+   * The alternative — an inclusive end — hands a miss to anyone who quits on a bad day,
+   * which is worse and far more common than losing one morning's credit.
+   */
+  archived_on: string | null;
 };
 
 /**

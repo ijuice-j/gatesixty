@@ -1,12 +1,25 @@
 // The habit rules that are easy to get subtly, cruelly wrong.
 //   node --experimental-strip-types _metrics.test.ts
-import { habitsForDate, scoreDay, formatProgress, type Week } from "./metrics.ts";
+import {
+  habitsForDate,
+  habitsForWeek,
+  habitsOverRange,
+  isLive,
+  scoreDay,
+  formatProgress,
+  type Week,
+} from "./metrics.ts";
+import { weeksOfMonth } from "../time.ts";
 import type { Habit, HabitEntry } from "./types.ts";
 
 // Mon 2026-07-13 .. Sun 2026-07-19
 const WEEK: Week = { start: "2026-07-13", end: "2026-07-19" };
+const MON = "2026-07-13";
 const WED = "2026-07-15";
 const THU = "2026-07-16";
+const SUN = "2026-07-19";
+const NEXT_MON = "2026-07-20"; // the week has settled by here, and not one day sooner
+const DATES = ["2026-07-13", "2026-07-14", WED, THU, "2026-07-17", "2026-07-18", SUN];
 
 const habit = (over: Partial<Habit> = {}): Habit => ({
   id: "h1",
@@ -17,6 +30,9 @@ const habit = (over: Partial<Habit> = {}): Habit => ({
   period: "day",
   color: "#6b7280",
   sort_order: 0,
+  // Long dead — so every test that predates lifespan keeps asking what it asked.
+  created_on: "2000-01-01",
+  archived_on: null,
   ...over,
 });
 
@@ -196,6 +212,155 @@ await test("a unitless weekly habit omits the unit", () => {
 
 await test("whole numbers don't grow decimals", () => {
   eq(formatProgress(one(habit({ unit: "L" }), [entry({ value: 8, target_snapshot: 8 })], WED, WED)), "8 / 8 L", "8 not 8.00");
+});
+
+console.log("\nhabits — you cannot break a promise you had not made yet");
+
+await test("a day before the habit existed has no row at all, and is NOT missed", () => {
+  const h = habit({ created_on: THU });
+  eq(habitsForDate([h], [], WED, SUN, WEEK), [], "Wednesday, declared Thursday");
+});
+
+await test("the day you declare it IS judged — the row appears immediately", () => {
+  eq(one(habit({ created_on: WED }), [], WED, WED).status, "open", "declared today");
+});
+
+await test("a habit archived today is gone from today, but was there yesterday", () => {
+  const h = habit({ archived_on: THU });
+  eq(habitsForDate([h], [], THU, THU, WEEK), [], "the day you stop is not a day you failed");
+  eq(one(h, [entry({ value: 50 })], WED, THU).status, "kept", "the day before still counts");
+});
+
+await test("isLive is half-open: [created_on, archived_on)", () => {
+  const h = habit({ created_on: WED, archived_on: "2026-07-17" });
+  eq([MON, WED, THU, "2026-07-17"].map((d) => isLive(h, d)), [false, true, true, false], "");
+});
+
+await test("an archived habit still shows on a day it was alive for", () => {
+  // The whole point of the archived decision: reviewing June shows June.
+  const h = habit({ archived_on: "2026-07-17" });
+  eq(one(h, [entry({ value: 50 })], WED, SUN).status, "kept", "archived later, kept then");
+});
+
+console.log("\nhabits — a weekly habit needs the whole week to be judged on it");
+
+await test("a weekly habit declared midweek is NOT judged that week, even at 3/3", () => {
+  // Both directions, because the tempting rule keeps the good news and drops the bad.
+  const born = habit({ id: "g", target: 3, period: "week", unit: null, created_on: WED });
+  const done = [visit("2026-07-15"), visit("2026-07-16"), visit("2026-07-17")];
+  eq(one(born, done, WED, "2026-07-20").status, null, "3 of 3 in a week it did not live");
+  eq(one(born, [], WED, "2026-07-20").status, null, "0 of 3 in a week it did not live");
+});
+
+await test("...but it is loggable that day, and judged from the next full week", () => {
+  const born = habit({ id: "g", target: 3, period: "week", unit: null, created_on: WED });
+  eq(isLive(born, WED), true, "declared Wednesday, live Wednesday");
+  const next: Week = { start: "2026-07-20", end: "2026-07-26" };
+  eq(habitsForDate([born], [], "2026-07-20", "2026-07-27", next)[0].status, "missed", "");
+});
+
+console.log("\nhabits — the week grid");
+
+await test("a daily habit gets one cell per day; a weekly one gets no cells", () => {
+  const w = habitsForWeek([habit(), gym], [entry({ value: 50 })], DATES, SUN);
+  eq(w.daily.length, 1, "one daily row");
+  eq(w.weekly.length, 1, "one weekly row");
+  eq(w.daily[0].cells.length, 7, "seven cells");
+  eq(w.daily[0].cells[2].status, "kept", "Wednesday's 50");
+});
+
+await test("cells before the habit existed are null — not scheduled, not missed", () => {
+  // NEXT_MON, not SUN: on Sunday the week has not settled and Sunday reads `open`, which
+  // is the rule working, not a bug. Judge it from the far side.
+  const w = habitsForWeek([habit({ created_on: THU })], [], DATES, NEXT_MON);
+  eq(w.daily[0].cells.map((c) => c.status), [null, null, null, "missed", "missed", "missed", "missed"], "");
+});
+
+await test("scored counts verdicts only — an unfinished week is not graded", () => {
+  // Wednesday lunchtime: Mon+Tue settled, Wed open, Thu-Sun not yet lived.
+  const w = habitsForWeek([habit()], [entry({ occurred_on: MON, value: 50 })], DATES, WED);
+  eq(w.daily[0].scored, 2, "Mon kept, Tue missed — and nothing else has a verdict");
+  eq(w.daily[0].kept, 1, "");
+});
+
+await test("a habit never alive in the week is dropped from the grid entirely", () => {
+  eq(habitsForWeek([habit({ created_on: "2026-08-01" })], [], DATES, SUN).daily, [], "");
+});
+
+await test("a weekly habit alive only MIDweek is still part of that week's grid", () => {
+  // Born Tuesday, archived Thursday: it never sees Monday or Sunday, so testing the ends
+  // alone would drop it from a week it genuinely lived in.
+  const g = habit({ id: "g", period: "week", target: 3, unit: null, created_on: "2026-07-14", archived_on: THU });
+  eq(habitsForWeek([g], [], DATES, NEXT_MON).weekly.length, 1, "present…");
+  eq(habitsForWeek([g], [], DATES, NEXT_MON).weekly[0].status, null, "…but never judged on it");
+});
+
+await test("the weekly band carries its own progress and the days it was logged", () => {
+  const w = habitsForWeek([gym], [visit("2026-07-13"), visit("2026-07-17")], DATES, NEXT_MON);
+  eq(w.weekly[0].progress, 2, "Mon + Fri");
+  eq(w.weekly[0].status, "missed", "2 of 3, week over");
+  eq(w.weekly[0].loggedOn, ["2026-07-13", "2026-07-17"], "for the band's tooltip");
+});
+
+console.log("\nhabits — the month rollup");
+
+await test("a daily habit counts days; a weekly one counts weeks", () => {
+  const weeks = weeksOfMonth("2026-07-01");
+  const dates = Array.from({ length: 31 }, (_, i) => `2026-07-${String(i + 1).padStart(2, "0")}`);
+  const rows = habitsOverRange([gym], [], dates, weeks, "2026-08-10");
+  eq(rows[0].judged, 4, "July 2026 owns four Mondays");
+  eq(rows[0].kept, 0, "");
+});
+
+await test("an untracked habit is judged on nothing and sorts last, not first", () => {
+  const dates = [MON, "2026-07-14", WED];
+  const rows = habitsOverRange(
+    [habit({ id: "u", target: null }), habit({ id: "d" })],
+    [],
+    dates,
+    [WEEK],
+    SUN,
+  );
+  eq(rows.map((r) => r.habit.id), ["d", "u"], "0% sorts above 'no verdict'");
+  eq(rows[1].judged, 0, "measured, never judged");
+  eq(rows[1].ratio, null, "renders '—', never 0%");
+});
+
+await test("streak counts back from the most recent judged day", () => {
+  const dates = [MON, "2026-07-14", WED, THU];
+  const es = [MON, WED, THU].map((d) => entry({ occurred_on: d, value: 50 }));
+  const rows = habitsOverRange([habit()], es, dates, [WEEK], SUN);
+  eq(rows[0].streak, 2, "Wed+Thu — Tuesday broke it");
+  eq(rows[0].kept, 3, "");
+  eq(rows[0].judged, 4, "");
+});
+
+await test("a habit is judged only from the day it existed — a shorter denominator", () => {
+  const dates = [MON, "2026-07-14", WED, THU];
+  const rows = habitsOverRange([habit({ created_on: WED })], [], dates, [WEEK], SUN);
+  eq(rows[0].judged, 2, "Wed and Thu only — declared on Wednesday");
+});
+
+console.log("\ntime — a week belongs to the month its Monday falls in");
+
+await test("July 2026 owns four weeks, starting Jul 6", () => {
+  const w = weeksOfMonth("2026-07-01");
+  eq(w.length, 4, "");
+  eq(w[0], { start: "2026-07-06", end: "2026-07-12" }, "the Jun 29 week is June's");
+  eq(w[3], { start: "2026-07-27", end: "2026-08-02" }, "the last week spills, end and all");
+});
+
+await test("June and July partition exactly — no week judged twice, none unjudged", () => {
+  const jun = weeksOfMonth("2026-06-01");
+  const jul = weeksOfMonth("2026-07-01");
+  eq(jun.length, 5, "");
+  eq(jun[4], { start: "2026-06-29", end: "2026-07-05" }, "June's last week owns Jul 1-5");
+  eq(jul[0].start, "2026-07-06", "and July picks up the very next day");
+});
+
+await test("every month has at least four weeks", () => {
+  const short = weeksOfMonth("2027-02-01");
+  eq(short.length >= 4, true, "the shortest month there is still holds four Mondays");
 });
 
 console.log(`\n${fails.length ? "FAILED" : "PASSED"} — ${pass} passed, ${fails.length} failed\n`);

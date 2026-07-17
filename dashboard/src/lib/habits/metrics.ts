@@ -28,7 +28,14 @@ export type HabitProgress = {
    * raising a goal from 50 to 100 cannot turn last week's successes into failures.
    */
   target: number | null;
-  status: HabitStatus;
+  /**
+   * `null` = there is nothing here to judge, which is not a verdict and not a miss.
+   *
+   * Only a weekly habit reaches it, and only for a week it did not live end to end —
+   * see isLiveAllWeek. A daily habit is either in your life on the day, and judged, or
+   * it isn't in the list at all.
+   */
+  status: HabitStatus | null;
 };
 
 /** The window a weekly habit is judged over. Monday…Sunday, inclusive. */
@@ -48,6 +55,96 @@ function latestSnapshot(entries: HabitEntry[]): number | null {
     if (!latest || e.occurred_on > latest.occurred_on) latest = e;
   }
   return latest ? latest.target_snapshot : null;
+}
+
+/**
+ * Was this habit part of your life on `date`? Half-open: `[created_on, archived_on)`.
+ *
+ * This governs whether a habit is SHOWN at all, which is a different question from
+ * whether it is judged — and the reason it's a filter rather than a fifth status. "This
+ * habit did not exist" would have to be threaded through scoreDay, the meter and both
+ * controls, and every one of them would render it as nothing. A habit that wasn't in
+ * your life on `date` has no row on `date`.
+ */
+export function isLive(habit: Habit, date: string): boolean {
+  return (
+    date >= habit.created_on &&
+    (habit.archived_on === null || date < habit.archived_on)
+  );
+}
+
+/**
+ * Did it live the WHOLE week?
+ *
+ * A weekly habit makes one claim about seven days, so it needs all seven to have been
+ * its own. Declare "3x a week" on Saturday and the week is already gone; calling that a
+ * miss accuses you of failing a target you were never given the days to hit.
+ *
+ * This withholds a `kept` exactly as readily as a `missed`, and that symmetry is the
+ * point — the tempting version, which keeps the good news from a half-lived week and
+ * drops the bad, is a rule that can only ever flatter. A lifespan is one contiguous
+ * interval, so alive at both ends is alive throughout.
+ */
+function isLiveAllWeek(habit: Habit, week: Week): boolean {
+  return isLive(habit, week.start) && isLive(habit, week.end);
+}
+
+/**
+ * Did any of this habit's life fall inside `[from, to]`?
+ *
+ * True interval overlap, not "alive at either end" — a habit declared on the Tuesday and
+ * archived on the Thursday never sees Monday or Sunday, and testing the ends alone would
+ * drop it from a week it was genuinely part of.
+ */
+function overlapsLife(habit: Habit, from: string, to: string): boolean {
+  return (
+    habit.created_on <= to &&
+    (habit.archived_on === null || habit.archived_on > from)
+  );
+}
+
+/**
+ * One habit's entries inside a Mon–Sun window.
+ *
+ * A string compare, not date math: `occurred_on` is ISO, so `>=`/`<=` already sort
+ * correctly and this module stays free of a calendar.
+ */
+const entriesInWeek = (es: HabitEntry[], w: Week): HabitEntry[] =>
+  es.filter((e) => e.occurred_on >= w.start && e.occurred_on <= w.end);
+
+/**
+ * The target a DAY is judged against. With an entry present its snapshot wins outright,
+ * null included; the habit's current target is the fallback for a day with nothing
+ * frozen to judge against.
+ */
+const dayTarget = (onDay: HabitEntry | null, h: Habit): number | null =>
+  onDay ? onDay.target_snapshot : h.target;
+
+/** The target a WEEK is judged against. The same rule, read off the week's latest entry. */
+const weekTarget = (inWeek: HabitEntry[], h: Habit): number | null =>
+  inWeek.length ? latestSnapshot(inWeek) : h.target;
+
+type Indexed = { all: HabitEntry[]; byDay: Map<string, HabitEntry> };
+const NO_ENTRIES: Indexed = { all: [], byDay: new Map() };
+
+/**
+ * habit_id → its entries, plus a day index. Built once per call.
+ *
+ * A month of cells is then a map lookup per day per habit, instead of re-scanning every
+ * entry you own for every cell drawn.
+ */
+function indexByHabit(entries: HabitEntry[]): Map<string, Indexed> {
+  const idx = new Map<string, Indexed>();
+  for (const e of entries) {
+    let mine = idx.get(e.habit_id);
+    if (!mine) {
+      mine = { all: [], byDay: new Map() };
+      idx.set(e.habit_id, mine);
+    }
+    mine.all.push(e);
+    mine.byDay.set(e.occurred_on, e);
+  }
+  return idx;
 }
 
 function statusOf(
@@ -83,36 +180,35 @@ export function habitsForDate(
   today: string,
   week: Week,
 ): HabitProgress[] {
-  return habits.map((habit) => {
-    const mine = entries.filter((e) => e.habit_id === habit.id);
-    const onDay = mine.find((e) => e.occurred_on === date) ?? null;
-    const inWeek = mine.filter(
-      (e) => e.occurred_on >= week.start && e.occurred_on <= week.end,
-    );
+  const idx = indexByHabit(entries);
 
-    const weekly = habit.period === "week";
-    const progress = weekly
-      ? inWeek.reduce((sum, e) => sum + e.value, 0)
-      : (onDay?.value ?? 0);
+  // Filtered, not statused — see isLive. Navigate to a day before you declared a habit
+  // and it simply isn't there, rather than sitting in the list calling you a failure for
+  // a promise you hadn't made yet.
+  return habits
+    .filter((habit) => isLive(habit, date))
+    .map((habit) => {
+      const mine = idx.get(habit.id) ?? NO_ENTRIES;
+      const onDay = mine.byDay.get(date) ?? null;
 
-    // Fall back to the habit's CURRENT target only when there's no entry to freeze
-    // against. With an entry present its snapshot wins outright, null included.
-    const target = weekly
-      ? inWeek.length
-        ? latestSnapshot(inWeek)
-        : habit.target
-      : onDay
-        ? onDay.target_snapshot
-        : habit.target;
+      const weekly = habit.period === "week";
+      const inWeek = weekly ? entriesInWeek(mine.all, week) : [];
+      const progress = weekly
+        ? inWeek.reduce((sum, e) => sum + e.value, 0)
+        : (onDay?.value ?? 0);
+      const target = weekly ? weekTarget(inWeek, habit) : dayTarget(onDay, habit);
 
-    return {
-      habit,
-      value: onDay?.value ?? null,
-      progress,
-      target,
-      status: statusOf(habit.period, progress, target, date, today, week.end),
-    };
-  });
+      return {
+        habit,
+        value: onDay?.value ?? null,
+        progress,
+        target,
+        status:
+          weekly && !isLiveAllWeek(habit, week)
+            ? null
+            : statusOf(habit.period, progress, target, date, today, week.end),
+      };
+    });
 }
 
 export type HabitScore = { kept: number; scored: number };
@@ -131,15 +227,23 @@ export function scoreDay(rows: HabitProgress[]): HabitScore {
   let kept = 0;
   let scored = 0;
   for (const r of rows) {
-    if (r.habit.period !== "day" || r.status === "untracked") continue;
+    if (r.habit.period !== "day" || r.status === null || r.status === "untracked")
+      continue;
     scored++;
     if (r.status === "kept") kept++;
   }
   return { kept, scored };
 }
 
-/** "45 / 50 reps" · "2 / 3" · "45 reps" when there's nothing to hit. */
-export function formatProgress(row: HabitProgress): string {
+/**
+ * "45 / 50 reps" · "2 / 3" · "45 reps" when there's nothing to hit.
+ *
+ * Structurally typed rather than taking a HabitProgress, so the week view's weekly row
+ * says the amount in the same words as the day view's. Same fact, same sentence.
+ */
+export function formatProgress(
+  row: Pick<HabitProgress, "habit" | "progress" | "target">,
+): string {
   const n = trim(row.progress);
   const unit = row.habit.unit ? ` ${row.habit.unit}` : "";
   if (row.target === null) return `${n}${unit}`;
@@ -149,4 +253,246 @@ export function formatProgress(row: HabitProgress): string {
 /** 45, not 45.00 — but 0.5 stays 0.5. */
 export function trim(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
+}
+
+// ---------------------------------------------------------------------------
+// Ranges — the week grid and the month rollup
+//
+// habitsForDate answers "what do I render for this habit today". A review asks a
+// different question over many days at once, and the answer is not that one called
+// in a loop: a weekly habit called per-day returns the same verdict seven times,
+// and seven copies of one verdict drawn in seven cells reads as seven kepts.
+// ---------------------------------------------------------------------------
+
+/** One day of a daily habit's week. */
+export type HabitCell = {
+  date: string;
+  /**
+   * `null` = the habit wasn't in your life that day. Not a miss and not a verdict
+   * withheld — there was nothing to judge. lib/activity/metrics.ts spells the same idea
+   * `cells: (status | null)[]`, where `null` is "not scheduled".
+   */
+  status: HabitStatus | null;
+  /** What you logged. `null` = nothing logged, which is not `0`. */
+  value: number | null;
+};
+
+/** The row a DAILY habit gets: one cell per day, because it judged each one. */
+export type HabitDailyRow = {
+  habit: Habit;
+  /** One per date passed in, in order. */
+  cells: HabitCell[];
+  kept: number;
+  /**
+   * Cells that actually got a verdict — kept + missed, and nothing else.
+   *
+   * `open` is excluded, and that's the whole reason this isn't scoreDay(). At Wednesday
+   * lunchtime a seven-cell row with four days still to come would read "2 of 7" and
+   * grade you for a week you have not finished living. The blocks grid draws the same
+   * line and calls it `scheduled`, skipping `upcoming`.
+   *
+   * scoreDay() counts `open` because the day view is a workbench, where "0 of 4" means
+   * four things left to do. This is a review, and a review reports verdicts. Same
+   * habits, different question.
+   */
+  scored: number;
+};
+
+/** The row a WEEKLY habit gets: one verdict, because the week is the unit. */
+export type HabitWeeklyRow = {
+  habit: Habit;
+  /** Logged across the whole Mon–Sun. */
+  progress: number;
+  target: number | null;
+  /** `null` = it didn't live the whole week, so the week has no verdict. */
+  status: HabitStatus | null;
+  /** The days inside the week holding a log, ascending — for the band's tooltip. */
+  loggedOn: string[];
+};
+
+export type HabitWeek = { daily: HabitDailyRow[]; weekly: HabitWeeklyRow[] };
+
+/**
+ * A week of habits, split along the only cadence axis there is.
+ *
+ * Daily and weekly habits are not two flavours of one row and must not be drawn as one.
+ * Seven cells is a claim about seven days; a weekly habit makes ONE claim about all
+ * seven. scoreDay() already refuses to pool them — this refuses to grid them.
+ *
+ * `dates` must be a whole Mon–Sun, ascending: the week is read off its ends. Hand it a
+ * slice and a weekly habit is judged on a fraction of its week and under-counts, which
+ * renders as a miss you didn't earn. The fix for a ragged range is never to slice the
+ * week, it's to pass the week.
+ *
+ * Rows come back in input order. The query already sorts by the order you chose, and a
+ * grid that reshuffles itself week to week is a grid you stop reading.
+ */
+export function habitsForWeek(
+  habits: Habit[],
+  entries: HabitEntry[],
+  dates: string[],
+  today: string,
+): HabitWeek {
+  const week: Week = { start: dates[0], end: dates[dates.length - 1] };
+  const idx = indexByHabit(entries);
+  const out: HabitWeek = { daily: [], weekly: [] };
+
+  for (const habit of habits) {
+    const mine = idx.get(habit.id) ?? NO_ENTRIES;
+
+    if (habit.period === "week") {
+      const inWeek = entriesInWeek(mine.all, week);
+      const target = weekTarget(inWeek, habit);
+      const progress = inWeek.reduce((sum, e) => sum + e.value, 0);
+      out.weekly.push({
+        habit,
+        progress,
+        target,
+        status: isLiveAllWeek(habit, week)
+          ? statusOf(habit.period, progress, target, week.start, today, week.end)
+          : null,
+        loggedOn: inWeek.map((e) => e.occurred_on).sort(),
+      });
+      continue;
+    }
+
+    const cells: HabitCell[] = dates.map((date) => {
+      const onDay = mine.byDay.get(date) ?? null;
+      if (!isLive(habit, date)) return { date, status: null, value: null };
+      const target = dayTarget(onDay, habit);
+      return {
+        date,
+        status: statusOf(habit.period, onDay?.value ?? 0, target, date, today, week.end),
+        value: onDay?.value ?? null,
+      };
+    });
+
+    let kept = 0;
+    let scored = 0;
+    for (const c of cells) {
+      if (c.status !== "kept" && c.status !== "missed") continue;
+      scored++;
+      if (c.status === "kept") kept++;
+    }
+    out.daily.push({ habit, cells, kept, scored });
+  }
+
+  // A habit that wasn't alive for a single day of the week has nothing to say about it.
+  out.daily = out.daily.filter((r) => r.cells.some((c) => c.status !== null));
+  out.weekly = out.weekly.filter((r) => overlapsLife(r.habit, week.start, week.end));
+  return out;
+}
+
+/**
+ * One habit's range, rolled up.
+ *
+ * The mirror of RecurringBlock, and deliberately not that type. A recurring block is
+ * reconstructed from your calendar; a habit is declared. Two things, two words —
+ * lib/activity/metrics.ts makes the same point from the other side.
+ */
+export type HabitRollup = {
+  habit: Habit;
+  /**
+   * Periods that got a verdict: days for a daily habit, Mon–Sun weeks for a weekly one.
+   * `open` periods, `untracked` ones and periods outside the habit's life are all out,
+   * so this denominator counts only time you actually lived under a goal.
+   *
+   * A daily habit's 31 and a weekly habit's 4 are the same KIND of number and nothing
+   * like the same size of one, which is why the row has to name the unit: "3 of 4" and
+   * "23 of 31" must not get read on one scale.
+   */
+  judged: number;
+  kept: number;
+  /** kept ÷ judged, 0–1. `null` when nothing was judged — rendered "—", never 0%. */
+  ratio: number | null;
+  /**
+   * Consecutive kept periods, counting back from the most recent JUDGED one.
+   *
+   * Counted inside this range only, exactly like recurringBlocksOverRange: a run that
+   * started before the range reads short. That's the safe direction — a number that
+   * understates your streak has never talked anyone out of it.
+   */
+  streak: number;
+};
+
+/**
+ * Roll a range up into one row per habit, worst first.
+ *
+ * `dates` are the days a DAILY habit is judged on; `weeks` are the Mon–Sun weeks a
+ * WEEKLY one is judged on. Two lists and not one because they don't line up: a month's
+ * days stop on the 31st and the week the 31st sits in does not. Callers derive both —
+ * see lib/time's weeksOfMonth — so this module keeps its type-only imports and no
+ * calendar of its own.
+ *
+ * `entries` must cover every date in `dates` AND every day of every week in `weeks`,
+ * which is wider than the month. Come up short and a weekly habit at the edge silently
+ * under-counts.
+ */
+export function habitsOverRange(
+  habits: Habit[],
+  entries: HabitEntry[],
+  dates: string[],
+  weeks: Week[],
+  today: string,
+): HabitRollup[] {
+  const idx = indexByHabit(entries);
+  const rows: HabitRollup[] = [];
+
+  for (const habit of habits) {
+    const mine = idx.get(habit.id) ?? NO_ENTRIES;
+    // Settled outcomes in ascending order — the streak is read off the tail, exactly as
+    // recurringBlocksOverRange does it.
+    const outcomes: boolean[] = [];
+
+    if (habit.period === "week") {
+      for (const week of weeks) {
+        if (!isLiveAllWeek(habit, week)) continue;
+        const inWeek = entriesInWeek(mine.all, week);
+        const target = weekTarget(inWeek, habit);
+        const progress = inWeek.reduce((sum, e) => sum + e.value, 0);
+        const status = statusOf(habit.period, progress, target, week.start, today, week.end);
+        if (status === "kept" || status === "missed") outcomes.push(status === "kept");
+      }
+    } else {
+      for (const date of dates) {
+        if (!isLive(habit, date)) continue;
+        const onDay = mine.byDay.get(date) ?? null;
+        const target = dayTarget(onDay, habit);
+        const status = statusOf(
+          habit.period,
+          onDay?.value ?? 0,
+          target,
+          date,
+          today,
+          date, // a daily habit settles on its own day; weekEnd is unused for period "day"
+        );
+        if (status === "kept" || status === "missed") outcomes.push(status === "kept");
+      }
+    }
+
+    // Never alive in the range, or alive but never judged in it — either way there's no
+    // row to draw. Callers need no archived-habit filter of their own.
+    const alive =
+      habit.period === "week"
+        ? weeks.some((w) => overlapsLife(habit, w.start, w.end))
+        : dates.some((d) => isLive(habit, d));
+    if (!alive) continue;
+
+    let streak = 0;
+    for (let i = outcomes.length - 1; i >= 0 && outcomes[i]; i--) streak++;
+
+    const judged = outcomes.length;
+    const kept = outcomes.filter(Boolean).length;
+    rows.push({ habit, judged, kept, ratio: judged ? kept / judged : null, streak });
+  }
+
+  // Worst first — the habit you keep dropping is the one you need to see. A habit with
+  // nothing to judge sorts to the bottom rather than heading a table it was never scored
+  // in: no verdict is not the same as the worst verdict, and putting it on top would be
+  // an accusation made by position.
+  return rows.sort((x, y) => {
+    if (x.ratio === null) return y.ratio === null ? 0 : 1;
+    if (y.ratio === null) return -1;
+    return x.ratio - y.ratio || y.judged - x.judged;
+  });
 }
