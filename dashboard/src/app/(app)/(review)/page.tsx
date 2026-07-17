@@ -83,12 +83,10 @@ export default async function Home({
         )
         .gte("occurred_on", from)
         .lte("occurred_on", date),
-      supabase
-        .from("habits")
-        .select(HABIT_COLS)
-        .is("archived_at", null)
-        .order("sort_order")
-        .order("created_at"),
+      // No archived filter: a habit's lifespan does that job now, and does it per DAY
+      // rather than per query. Today is unchanged — an archived habit is not live today
+      // either way — but yesterday finally shows the habit you were keeping yesterday.
+      supabase.from("habits").select(HABIT_COLS).order("sort_order").order("created_at"),
       supabase
         .from("habit_entries")
         .select(ENTRY_COLS)
@@ -100,7 +98,7 @@ export default async function Home({
   // Habits need no calendar and no Google token, so they're built before the try/catch
   // below and render even when the calendar can't load.
   const habitRows = habitsForDate(
-    (habitData ?? []).map(toHabit),
+    (habitData ?? []).map((r) => toHabit(r, tz)),
     (entryData ?? []).map(toEntry),
     date,
     today,
@@ -214,6 +212,7 @@ export default async function Home({
             score={scoreDay(habitRows)}
             date={date}
             editable={date <= today}
+            declared={(habitData ?? []).length > 0}
           />
         </aside>
       </div>

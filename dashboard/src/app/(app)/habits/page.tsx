@@ -1,35 +1,33 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getUser } from "@/lib/supabase/user";
 import { HABIT_COLS, toHabit } from "@/lib/habits/rows";
-import type { Habit } from "@/lib/habits/types";
+import { resolveViewerTimeZone } from "@/lib/time";
 import { HabitForm } from "../../habit-form";
 import { HabitRow } from "../../habit-row";
 
 // Written on every log, so never cached.
 export const dynamic = "force-dynamic";
 
-type Row = Habit & { archived_at: string | null };
-
 export default async function HabitsPage() {
+  // This page renders no dates, and reads a habit's life only for its NULL-ness — which
+  // no timezone can change. So it takes the zone toHabit requires and skips the
+  // `resolved` gate the review pages need: an unresolved cookie cannot make this wrong.
+  const cookieStore = await cookies();
+  const { tz } = resolveViewerTimeZone(cookieStore.get("tz")?.value);
+
   const supabase = await createClient();
   const [user, { data }] = await Promise.all([
     getUser(), // cache()'d — the layout already asked
-    supabase
-      .from("habits")
-      .select(`${HABIT_COLS}, archived_at`)
-      .order("sort_order")
-      .order("created_at"),
+    supabase.from("habits").select(HABIT_COLS).order("sort_order").order("created_at"),
   ]);
   if (!user) redirect("/login");
 
-  const all: Row[] = (data ?? []).map((r) => ({
-    ...toHabit(r),
-    archived_at: (r.archived_at as string | null) ?? null,
-  }));
-  const active = all.filter((h) => !h.archived_at);
-  const archived = all.filter((h) => h.archived_at);
+  const all = (data ?? []).map((r) => toHabit(r, tz));
+  const active = all.filter((h) => h.archived_on === null);
+  const archived = all.filter((h) => h.archived_on !== null);
 
   return (
     <div className="w-full max-w-5xl px-6 py-6">

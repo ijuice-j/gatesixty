@@ -17,12 +17,22 @@ export function HabitList({
   score,
   date,
   editable,
+  declared,
 }: {
   rows: HabitProgress[];
   score: { kept: number; scored: number };
   date: string;
   /** A day you haven't lived can't be logged. Future dates render read-only. */
   editable: boolean;
+  /**
+   * Whether you have declared ANY habit, ever.
+   *
+   * `rows` is per-DATE now that a habit has a lifespan, so an empty one means "none of
+   * them were alive on this day" — not "you have no habits". Without this the first-run
+   * CTA below would greet a three-habit user the moment they stepped back to a day before
+   * they declared them.
+   */
+  declared: boolean;
 }) {
   return (
     <section>
@@ -43,11 +53,19 @@ export function HabitList({
       {rows.length === 0 ? (
         <div className="ds-card ds-card--bordered">
           <p className="text-sm text-[var(--text-color-kumo-subtle)]">
-            Nothing tracked yet.{" "}
-            <Link href="/habits" className="text-[var(--text-color-kumo-info)] underline">
-              Add a habit
-            </Link>{" "}
-            for what the calendar can&apos;t hold — pushups, water, pages.
+            {declared ? (
+              // You have habits; none of them reach back this far. No CTA — there is
+              // nothing to add that would change a day already over.
+              <>You weren&apos;t tracking any habits on this day.</>
+            ) : (
+              <>
+                Nothing tracked yet.{" "}
+                <Link href="/habits" className="text-[var(--text-color-kumo-info)] underline">
+                  Add a habit
+                </Link>{" "}
+                for what the calendar can&apos;t hold — pushups, water, pages.
+              </>
+            )}
           </p>
         </div>
       ) : (

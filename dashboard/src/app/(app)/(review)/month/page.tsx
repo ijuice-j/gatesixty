@@ -17,6 +17,8 @@ import {
   recurringBlocksOverRange,
   pct,
 } from "@/lib/activity/metrics";
+import { habitsOverRange, type HabitRollup } from "@/lib/habits/metrics";
+import { HABIT_COLS, ENTRY_COLS, toHabit, toEntry } from "@/lib/habits/rows";
 import {
   resolveViewerTimeZone,
   dateStringInTz,
@@ -24,6 +26,7 @@ import {
   daysInMonth,
   shiftMonth,
   weekdayIndex,
+  weeksOfMonth,
 } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "../../../timezone-sync";
@@ -64,21 +67,50 @@ export default async function MonthPage({
   // This month and the previous one — the previous one is the delta.
   const dates = dateRange(prevFirst, nPrev + nDays);
 
+  // The month's own days, derived here rather than from the reconstruction below, which is
+  // empty whenever Google fails.
+  const monthDates = dateRange(first, nDays);
+  // The Mon–Sun weeks this month OWNS — see weeksOfMonth. The last one usually ends in
+  // next month, and the entry window is built FROM it rather than around it: two
+  // expressions of one policy is how a weekly habit at the edge silently under-counts.
+  const weeks = weeksOfMonth(first);
+  const entryTo = weeks[weeks.length - 1].end;
+
   // Auth and both queries in parallel — RLS scopes each table to its owner, so neither
   // query has to wait for the user id.
   const supabase = await createClient();
-  const [user, { data: cred }, { data: logData }] = await Promise.all([
-    getUser(),
-    supabase.from("google_credentials").select("refresh_token").maybeSingle(),
-    supabase
-      .from("activity_logs")
-      .select(
-        "gcal_event_id, title, done, occurred_on, planned_start, planned_end, color, ended_at",
-      )
-      .gte("occurred_on", prevFirst)
-      .lt("occurred_on", nextFirst),
-  ]);
+  const [user, { data: cred }, { data: logData }, { data: habitData }, { data: entryData }] =
+    await Promise.all([
+      getUser(),
+      supabase.from("google_credentials").select("refresh_token").maybeSingle(),
+      supabase
+        .from("activity_logs")
+        .select(
+          "gcal_event_id, title, done, occurred_on, planned_start, planned_end, color, ended_at",
+        )
+        .gte("occurred_on", prevFirst)
+        .lt("occurred_on", nextFirst),
+      // No archived filter — a habit's lifespan decides. See lib/habits/metrics.
+      supabase.from("habits").select(HABIT_COLS).order("sort_order").order("created_at"),
+      // From the 1st, because every week this month owns starts on or after it, and a
+      // daily habit needs the 1st anyway. Out to the last week's end, which spills — and
+      // that spill is the point. No previous month: there is no habit delta.
+      supabase
+        .from("habit_entries")
+        .select(ENTRY_COLS)
+        .gte("occurred_on", first)
+        .lte("occurred_on", entryTo),
+    ]);
   if (!user) redirect("/login");
+
+  // Before the calendar try/catch, as on the day view — habits need no Google token.
+  const habitRows = habitsOverRange(
+    (habitData ?? []).map((r) => toHabit(r, tz)),
+    (entryData ?? []).map(toEntry),
+    monthDates,
+    weeks,
+    today,
+  );
 
   const logs = (logData ?? []) as ActivityLog[];
 
@@ -268,7 +300,113 @@ export default async function MonthPage({
             </section>
           </div>
         )}
+
+        {/*
+         * Outside the guards above, deliberately: a habit has no Google event behind it, so
+         * a dead token blanks the blocks and leaves this standing.
+         *
+         * No per-day strip here, and no second heatmap. The month already decided a
+         * thing × day grid is the wrong zoom — that's what /week is for — and a habits
+         * heatmap beside a follow-through heatmap would be two identical green ramps
+         * meaning two incomparable things, which is the exact misreading habit-list.tsx
+         * exists to refuse. A month asks which habit you are dropping. This answers that.
+         */}
+        {habitRows.length > 0 && (
+          <section className="mt-8">
+            <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+              Habits · worst first
+            </h3>
+
+            {/* No bar in this table, and the empty space is the point. A bar whose length
+                is kept ÷ judged IS a percentage, drawn — and it would sit inches below a
+                bar whose length is hours kept ÷ hours planned, inviting exactly the
+                length-to-length comparison that means nothing. The ratio orders these rows
+                and colours the bad ones. It is never printed and never drawn. */}
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  {/* No Target column, deliberately. The habit row carries the goal you
+                      hold NOW, while Kept beside it was judged against the goal frozen on
+                      each entry — so a June row judged at 50 reps would sit under a header
+                      reading 100 and claim you hit it 23 times. The target you are chasing
+                      lives on /habits; this table answers which habit you are dropping. */}
+                  {["Habit", "Kept", "Streak"].map((h, i) => (
+                    <th
+                      key={h}
+                      className={
+                        "border-b border-[var(--color-kumo-line)] pb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)] " +
+                        (i === 0 ? "pr-2.5 text-left" : "text-right")
+                      }
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {habitRows.map((row) => (
+                  <HabitRollupRow key={row.habit.id} row={row} />
+                ))}
+              </tbody>
+            </table>
+
+            <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+              Declared, not derived — a habit is here because you said so. Judged from the
+              day you made it: one added on the 8th is scored on 24 days, not 31. Not
+              counted in follow-through — habits have no hours to weigh.
+            </p>
+          </section>
+        )}
       </div>
+  );
+}
+
+function HabitRollupRow({ row }: { row: HabitRollup }) {
+  const bad = row.ratio !== null && row.ratio < 0.6;
+  const unit = row.habit.period === "week" ? "weeks" : "days";
+  const cell = "border-b border-[var(--color-kumo-line)] py-2.5";
+
+  return (
+    <tr>
+      <td className={`${cell} pr-2.5`}>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="size-2 shrink-0 rounded-full"
+            style={{ backgroundColor: row.habit.color }}
+            aria-hidden
+          />
+          <span className="truncate text-base">{row.habit.name}</span>
+        </div>
+      </td>
+
+      {/* "18 of 24 days" · "2 of 4 weeks". A count, not a percentage — and prose, so it
+          can't be read on the same scale as the follow-through column above it. The
+          denominator carries the lifespan for free: a habit declared on the 8th says 24
+          where its neighbours say 31, without spending a cell to explain itself. */}
+      <td className={`${cell} whitespace-nowrap text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]`}>
+        {row.judged === 0 ? (
+          <span className="text-[var(--text-color-kumo-inactive)]">—</span>
+        ) : (
+          <>
+            <span
+              className={
+                "font-semibold " +
+                (bad
+                  ? "text-[var(--text-color-kumo-warning)]"
+                  : "text-[var(--text-color-kumo-default)]")
+              }
+            >
+              {row.kept}
+            </span>{" "}
+            of {row.judged} {unit}
+          </>
+        )}
+      </td>
+
+      <td className={`${cell} text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]`}>
+        {row.streak ? `${row.streak}${row.habit.period === "week" ? "w" : "d"}` : "—"}
+      </td>
+    </tr>
   );
 }
 
