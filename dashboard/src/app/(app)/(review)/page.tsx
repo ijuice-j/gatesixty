@@ -12,10 +12,18 @@ import {
   type ReconstructedDay,
 } from "@/lib/activity/range";
 import { followThrough, totalFollowThrough } from "@/lib/activity/metrics";
-import { dateStringInTz, shiftDate, resolveViewerTimeZone } from "@/lib/time";
+import { habitsForDate, scoreDay } from "@/lib/habits/metrics";
+import { HABIT_COLS, ENTRY_COLS, toHabit, toEntry } from "@/lib/habits/rows";
+import {
+  dateStringInTz,
+  shiftDate,
+  weekStartDate,
+  resolveViewerTimeZone,
+} from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "../../timezone-sync";
 import { DayList } from "../../day-list";
+import { HabitList } from "../../habit-list";
 import { MetricHeader } from "../../metric-header";
 import { ReconnectBanner, LoadErrorBanner } from "../../banners";
 
@@ -56,22 +64,48 @@ export default async function Home({
   const from = shiftDate(date, -(TRAILING - 1));
   const dates = dateRange(from, TRAILING);
 
-  // All three Supabase reads fire together. This used to run getUser() and THEN the two
-  // queries, stacking network round-trips for no reason: RLS already scopes both tables to
-  // their owner, so neither query needs to wait for the user id to come back.
+  // A weekly habit is judged on its whole week, so Monday's row has to see Friday's log.
+  // That's the entry window — one indexed week, not the months a streak would need.
+  const week = { start: weekStartDate(date), end: shiftDate(weekStartDate(date), 6) };
+
+  // All the Supabase reads fire together. This used to run getUser() and THEN the
+  // queries, stacking network round-trips for no reason: RLS already scopes every table
+  // to its owner, so none of them needs to wait for the user id to come back.
   const supabase = await createClient();
-  const [user, { data: cred }, { data: logData }] = await Promise.all([
-    getUser(), // cache()'d — the layout already asked, so this costs nothing
-    supabase.from("google_credentials").select("refresh_token").maybeSingle(),
-    supabase
-      .from("activity_logs")
-      .select(
-        "gcal_event_id, title, done, occurred_on, planned_start, planned_end, color, ended_at",
-      )
-      .gte("occurred_on", from)
-      .lte("occurred_on", date),
-  ]);
+  const [user, { data: cred }, { data: logData }, { data: habitData }, { data: entryData }] =
+    await Promise.all([
+      getUser(), // cache()'d — the layout already asked, so this costs nothing
+      supabase.from("google_credentials").select("refresh_token").maybeSingle(),
+      supabase
+        .from("activity_logs")
+        .select(
+          "gcal_event_id, title, done, occurred_on, planned_start, planned_end, color, ended_at",
+        )
+        .gte("occurred_on", from)
+        .lte("occurred_on", date),
+      supabase
+        .from("habits")
+        .select(HABIT_COLS)
+        .is("archived_at", null)
+        .order("sort_order")
+        .order("created_at"),
+      supabase
+        .from("habit_entries")
+        .select(ENTRY_COLS)
+        .gte("occurred_on", week.start)
+        .lte("occurred_on", week.end),
+    ]);
   if (!user) redirect("/login");
+
+  // Habits need no calendar and no Google token, so they're built before the try/catch
+  // below and render even when the calendar can't load.
+  const habitRows = habitsForDate(
+    (habitData ?? []).map(toHabit),
+    (entryData ?? []).map(toEntry),
+    date,
+    today,
+    week,
+  );
 
   const logs = (logData ?? []) as ActivityLog[];
 
@@ -115,7 +149,11 @@ export default async function Home({
   });
 
   return (
-    <div className="w-full max-w-5xl px-6 py-6">
+    // No max-width on the page: the cap lives on the COLUMNS instead. Capping the page at
+    // max-w-5xl and then carving a habits column out of it took the width from the blocks
+    // and left the space to their right empty — the blocks are the day's subject and
+    // shouldn't pay for a sidebar there was already room for.
+    <div className="w-full px-6 py-6">
       <TimezoneSync current={tz} resolved />
 
       <div className="mb-4 flex items-center gap-1.5">
@@ -141,17 +179,44 @@ export default async function Home({
         )}
       </div>
 
-      <MetricHeader
-        label={`Follow-through · ${dateLabel}`}
-        ft={ft}
-        compare={prior.ratio !== null ? prior : undefined}
-        compareLabel="your 6-day average"
-      />
+      {/*
+       * Two self-contained columns, each capped rather than sharing one cap.
+       *
+       * The blocks keep 64rem — the width the whole page used to have — so nothing about
+       * them moved. Habits take a column in the space that was already sitting empty to
+       * their right. `minmax(0, …)` lets both shrink on a smaller screen; below `lg` it
+       * stacks, so a narrow window reads blocks first rather than two squeezed columns.
+       *
+       * Follow-through belongs to the LEFT column, not above both: it counts blocks and
+       * nothing else, so scoping it to them draws the boundary the footnote in
+       * <HabitList> otherwise has to explain twice.
+       */}
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,64rem)_minmax(0,400px)]">
+        <div className="min-w-0">
+          <MetricHeader
+            label={`Follow-through · ${dateLabel}`}
+            ft={ft}
+            compare={prior.ratio !== null ? prior : undefined}
+            compareLabel="your 6-day average"
+          />
 
-      {needsReconnect && <ReconnectBanner what="this day" />}
-      {loadError && <LoadErrorBanner message={loadError} />}
+          {needsReconnect && <ReconnectBanner what="this day" />}
+          {loadError && <LoadErrorBanner message={loadError} />}
 
-      {!needsReconnect && !loadError && <DayList items={items} date={date} tz={tz} />}
+          {!needsReconnect && !loadError && <DayList items={items} date={date} tz={tz} />}
+        </div>
+
+        {/* Outside the calendar guards on purpose: a habit has no Google event behind it,
+            so a dead token or a failed fetch is no reason to stop you logging pushups. */}
+        <aside className="min-w-0">
+          <HabitList
+            rows={habitRows}
+            score={scoreDay(habitRows)}
+            date={date}
+            editable={date <= today}
+          />
+        </aside>
+      </div>
     </div>
   );
 }
