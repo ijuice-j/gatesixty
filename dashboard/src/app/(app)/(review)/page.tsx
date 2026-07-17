@@ -149,7 +149,11 @@ export default async function Home({
   });
 
   return (
-    <div className="w-full max-w-5xl px-6 py-6">
+    // No max-width on the page: the cap lives on the COLUMNS instead. Capping the page at
+    // max-w-5xl and then carving a habits column out of it took the width from the blocks
+    // and left the space to their right empty — the blocks are the day's subject and
+    // shouldn't pay for a sidebar there was already room for.
+    <div className="w-full px-6 py-6">
       <TimezoneSync current={tz} resolved />
 
       <div className="mb-4 flex items-center gap-1.5">
@@ -175,26 +179,44 @@ export default async function Home({
         )}
       </div>
 
-      <MetricHeader
-        label={`Follow-through · ${dateLabel}`}
-        ft={ft}
-        compare={prior.ratio !== null ? prior : undefined}
-        compareLabel="your 6-day average"
-      />
+      {/*
+       * Two self-contained columns, each capped rather than sharing one cap.
+       *
+       * The blocks keep 64rem — the width the whole page used to have — so nothing about
+       * them moved. Habits take a column in the space that was already sitting empty to
+       * their right. `minmax(0, …)` lets both shrink on a smaller screen; below `lg` it
+       * stacks, so a narrow window reads blocks first rather than two squeezed columns.
+       *
+       * Follow-through belongs to the LEFT column, not above both: it counts blocks and
+       * nothing else, so scoping it to them draws the boundary the footnote in
+       * <HabitList> otherwise has to explain twice.
+       */}
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,64rem)_minmax(0,400px)]">
+        <div className="min-w-0">
+          <MetricHeader
+            label={`Follow-through · ${dateLabel}`}
+            ft={ft}
+            compare={prior.ratio !== null ? prior : undefined}
+            compareLabel="your 6-day average"
+          />
 
-      {needsReconnect && <ReconnectBanner what="this day" />}
-      {loadError && <LoadErrorBanner message={loadError} />}
+          {needsReconnect && <ReconnectBanner what="this day" />}
+          {loadError && <LoadErrorBanner message={loadError} />}
 
-      {!needsReconnect && !loadError && <DayList items={items} date={date} tz={tz} />}
+          {!needsReconnect && !loadError && <DayList items={items} date={date} tz={tz} />}
+        </div>
 
-      {/* Outside the calendar guards on purpose: a habit has no Google event behind it,
-          so a dead token or a failed fetch is no reason to stop you logging pushups. */}
-      <HabitList
-        rows={habitRows}
-        score={scoreDay(habitRows)}
-        date={date}
-        editable={date <= today}
-      />
+        {/* Outside the calendar guards on purpose: a habit has no Google event behind it,
+            so a dead token or a failed fetch is no reason to stop you logging pushups. */}
+        <aside className="min-w-0">
+          <HabitList
+            rows={habitRows}
+            score={scoreDay(habitRows)}
+            date={date}
+            editable={date <= today}
+          />
+        </aside>
+      </div>
     </div>
   );
 }
