@@ -58,48 +58,49 @@ function latestSnapshot(entries: HabitEntry[]): number | null {
 }
 
 /**
- * Was this habit part of your life on `date`? Half-open: `[created_on, archived_on)`.
+ * Was this habit active on `date`? True when `date` falls in ANY active span, half-open.
  *
- * This governs whether a habit is SHOWN at all, which is a different question from
- * whether it is judged — and the reason it's a filter rather than a fifth status. "This
- * habit did not exist" would have to be threaded through scoreDay, the meter and both
- * controls, and every one of them would render it as nothing. A habit that wasn't in
- * your life on `date` has no row on `date`.
+ * The union, not one `[created_on, archived_on)` interval — archive then restore leaves a
+ * gap the pair can't hold, and judging that gap as lived is the false accusation this
+ * fixes. It governs whether a habit is SHOWN at all, which is a different question from
+ * whether it's judged: "not being tracked then" has no row, rather than a fifth status
+ * every renderer would have to draw as nothing.
  */
 export function isLive(habit: Habit, date: string): boolean {
-  return (
-    date >= habit.created_on &&
-    (habit.archived_on === null || date < habit.archived_on)
+  return habit.active_spans.some(
+    (s) => date >= s.start && (s.end === null || date < s.end),
   );
 }
 
 /**
- * Did it live the WHOLE week?
+ * Did ONE span cover the WHOLE week?
  *
- * A weekly habit makes one claim about seven days, so it needs all seven to have been
- * its own. Declare "3x a week" on Saturday and the week is already gone; calling that a
- * miss accuses you of failing a target you were never given the days to hit.
+ * A weekly habit makes one claim about seven days, so it needs all seven to have been its
+ * own — and its own without interruption. Declare "3x a week" on Saturday, or archive it
+ * on Wednesday, and the week was not wholly lived; calling either a miss accuses you of
+ * failing a target you were never given the days to hit. A single span must contain the
+ * week end to end: a pause that splits it disqualifies the week, which is exactly right.
  *
- * This withholds a `kept` exactly as readily as a `missed`, and that symmetry is the
- * point — the tempting version, which keeps the good news from a half-lived week and
- * drops the bad, is a rule that can only ever flatter. A lifespan is one contiguous
- * interval, so alive at both ends is alive throughout.
+ * The symmetry is the point — it withholds a `kept` as readily as a `missed`. The tempting
+ * version, which keeps the good news from a half-lived week and drops the bad, can only
+ * ever flatter.
  */
 function isLiveAllWeek(habit: Habit, week: Week): boolean {
-  return isLive(habit, week.start) && isLive(habit, week.end);
+  return habit.active_spans.some(
+    (s) => s.start <= week.start && (s.end === null || week.end < s.end),
+  );
 }
 
 /**
- * Did any of this habit's life fall inside `[from, to]`?
+ * Did any active span overlap `[from, to]`?
  *
- * True interval overlap, not "alive at either end" — a habit declared on the Tuesday and
- * archived on the Thursday never sees Monday or Sunday, and testing the ends alone would
- * drop it from a week it was genuinely part of.
+ * True interval overlap against every span — a habit active only Tuesday–Thursday never
+ * sees Monday or Sunday, and one paused across the middle of the range is still part of
+ * the range at its edges.
  */
 function overlapsLife(habit: Habit, from: string, to: string): boolean {
-  return (
-    habit.created_on <= to &&
-    (habit.archived_on === null || habit.archived_on > from)
+  return habit.active_spans.some(
+    (s) => s.start <= to && (s.end === null || s.end > from),
   );
 }
 

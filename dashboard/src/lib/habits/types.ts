@@ -5,6 +5,14 @@ export type HabitKind = "count" | "check";
 export type HabitPeriod = "day" | "week";
 
 /**
+ * A stretch the habit was active — viewer-local, half-open `[start, end)`. `end` is null
+ * only on the current, open span. A habit's real lifespan is the UNION of these: archive
+ * closes the open one, restore opens a new one, and a day inside no span was a day you had
+ * paused the habit and were not being asked about.
+ */
+export type HabitSpan = { start: string; end: string | null };
+
+/**
  * One row of the Supabase `habits` table — the plan you declared.
  *
  * This is the piece Google supplies for a calendar block and you supply for a habit.
@@ -29,8 +37,15 @@ export type Habit = {
   period: HabitPeriod;
   color: string; // #RRGGBB
   sort_order: number;
-  /** The day you declared it, viewer-local. Nothing before it is asked about. */
+  /** The day you declared it, viewer-local — the first span's start. Nothing before it is
+   *  asked about. */
   created_on: string;
+  /**
+   * Every stretch the habit was active, ascending and non-overlapping. This — not the
+   * single created_on/archived_on pair — is what says whether a past day was being
+   * tracked, because archive-then-restore is a gap the pair can't hold.
+   */
+  active_spans: HabitSpan[];
   /**
    * The day you archived it, viewer-local; `null` while it's live.
    *

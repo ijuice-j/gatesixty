@@ -21,23 +21,33 @@ const SUN = "2026-07-19";
 const NEXT_MON = "2026-07-20"; // the week has settled by here, and not one day sooner
 const DATES = ["2026-07-13", "2026-07-14", WED, THU, "2026-07-17", "2026-07-18", SUN];
 
-const habit = (over: Partial<Habit> = {}): Habit => ({
-  id: "h1",
-  name: "Pushups",
-  kind: "count",
-  unit: "reps",
-  target: 50,
-  period: "day",
-  color: "#6b7280",
-  sort_order: 0,
-  // Long dead — so every test that predates lifespan keeps asking what it asked.
-  created_on: "2000-01-01",
-  archived_on: null,
-  // Tracked since forever, so a no-entry day is judged exactly as it was before this
-  // column existed. The untracked-then-tracked tests set it explicitly.
-  target_effective_since: "2000-01-01",
-  ...over,
-});
+const habit = (over: Partial<Habit> = {}): Habit => {
+  const h: Habit = {
+    id: "h1",
+    name: "Pushups",
+    kind: "count",
+    unit: "reps",
+    target: 50,
+    period: "day",
+    color: "#6b7280",
+    sort_order: 0,
+    // Long dead — so every test that predates lifespan keeps asking what it asked.
+    created_on: "2000-01-01",
+    archived_on: null,
+    active_spans: [],
+    // Tracked since forever, so a no-entry day is judged exactly as it was before this
+    // column existed. The untracked-then-tracked tests set it explicitly.
+    target_effective_since: "2000-01-01",
+    ...over,
+  };
+  // One span from created_on/archived_on unless a test declares its own — so every
+  // single-interval test written before spans keeps meaning what it meant, and the
+  // archive-restore tests pass a real gap.
+  if (over.active_spans === undefined) {
+    h.active_spans = [{ start: h.created_on, end: h.archived_on }];
+  }
+  return h;
+};
 
 const entry = (over: Partial<HabitEntry> = {}): HabitEntry => ({
   habit_id: "h1",
@@ -342,6 +352,58 @@ await test("a habit is judged only from the day it existed — a shorter denomin
   const dates = [MON, "2026-07-14", WED, THU];
   const rows = habitsOverRange([habit({ created_on: WED })], [], dates, [WEEK], SUN);
   eq(rows[0].judged, 2, "Wed and Thu only — declared on Wednesday");
+});
+
+console.log("\nhabits — a pause is not a stretch of misses");
+
+await test("a day in the archived gap is NOT live — no false miss", () => {
+  // Kept Jan–Feb, archived (injured), restored mid-July. April was a deliberate pause.
+  const h = habit({
+    created_on: "2026-01-01",
+    active_spans: [
+      { start: "2026-01-01", end: "2026-03-01" },
+      { start: "2026-07-15", end: null },
+    ],
+  });
+  eq(isLive(h, "2026-02-15"), true, "February — active");
+  eq(isLive(h, "2026-04-15"), false, "April — the gap, not a miss");
+  eq(isLive(h, "2026-07-20"), true, "after restore — active again");
+});
+
+await test("the month rollup judges zero days inside an archived gap", () => {
+  const h = habit({
+    created_on: "2026-01-01",
+    active_spans: [
+      { start: "2026-01-01", end: "2026-03-01" },
+      { start: "2026-07-15", end: null },
+    ],
+  });
+  const april = Array.from({ length: 30 }, (_, i) => `2026-04-${String(i + 1).padStart(2, "0")}`);
+  const rows = habitsOverRange([h], [], april, [], "2026-08-01");
+  eq(rows.length, 0, "not one April day was active, so there's no row to draw");
+});
+
+await test("a habit archived-then-restored still shows the days it WAS kept", () => {
+  // The point of restore: the pre-pause history is still yours.
+  const h = habit({
+    created_on: "2026-01-01",
+    active_spans: [
+      { start: "2026-01-01", end: "2026-03-01" },
+      { start: "2026-07-15", end: null },
+    ],
+  });
+  const kept = one(h, [entry({ occurred_on: "2026-02-11", value: 50 })], "2026-02-11", "2026-08-01");
+  eq(kept.status, "kept", "February 11 was lived and logged");
+});
+
+await test("a weekly habit archived mid-week is not judged on that split week", () => {
+  const g = habit({
+    id: "g", period: "week", target: 3, unit: null,
+    created_on: "2026-07-06",
+    active_spans: [{ start: "2026-07-06", end: "2026-07-16" }], // archived Thursday
+  });
+  // The Jul 13–19 week is split by the Thu archive: no single span holds it whole.
+  eq(one(g, [], "2026-07-13", "2026-07-27").status, null, "the week was not wholly lived");
 });
 
 console.log("\nhabits — a target does not reach back before it existed");
