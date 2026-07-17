@@ -14,10 +14,10 @@ import {
 import { followThrough, totalFollowThrough } from "@/lib/activity/metrics";
 import { dateStringInTz, shiftDate, resolveViewerTimeZone } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
-import { TimezoneSync } from "../timezone-sync";
-import { DayList } from "../day-list";
-import { MetricHeader } from "../metric-header";
-import { ReconnectBanner, LoadErrorBanner } from "../banners";
+import { TimezoneSync } from "../../timezone-sync";
+import { DayList } from "../../day-list";
+import { MetricHeader } from "../../metric-header";
+import { ReconnectBanner, LoadErrorBanner } from "../../banners";
 
 // The ledger is read per request and never cached — marking something done must show up
 // instantly. The CALENDAR is cached for 5 minutes inside lib/google/calendar.ts, which is

@@ -19,9 +19,9 @@ import {
   shiftDate,
 } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
-import { TimezoneSync } from "../../timezone-sync";
-import { MetricHeader } from "../../metric-header";
-import { ReconnectBanner, LoadErrorBanner } from "../../banners";
+import { TimezoneSync } from "../../../timezone-sync";
+import { MetricHeader } from "../../../metric-header";
+import { ReconnectBanner, LoadErrorBanner } from "../../../banners";
 
 // The ledger is read per request and never cached. The CALENDAR is cached for 5 minutes
 // (lib/google/calendar.ts) — see the note in ../page.tsx.
