@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { dateStringInTz, resolveViewerTimeZone } from "@/lib/time";
+import { dateStringInTz, resolveViewerTimeZone, weekStartDate } from "@/lib/time";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -144,6 +144,82 @@ export async function createHabit(formData: FormData) {
     ...(/^#[0-9a-fA-F]{6}$/.test(color) ? { color } : {}),
   });
   if (error) throw new Error(`Could not add: ${error.message}`);
+
+  revalidateHabits();
+}
+
+/**
+ * Edit a habit's name, goal, unit or colour.
+ *
+ * `kind` and `period` are NOT editable, and the form doesn't offer them. They decide what
+ * an entry MEANS — flip 'count' to 'check' and every logged 45 silently becomes "done"
+ * forty-five times over; flip 'day' to 'week' and days that were each judged on their own
+ * are retroactively pooled. Archive and add a new one instead; the old history stays
+ * readable under the terms it was recorded.
+ */
+export async function updateHabit(formData: FormData) {
+  const { supabase } = await client();
+
+  const habitId = str(formData, "habit_id");
+  if (!habitId) throw new Error("Missing habit.");
+
+  const name = str(formData, "name");
+  if (!name) throw new Error("Give it a name.");
+
+  // kind and period come from the row, never the form — see above.
+  const { data: current } = await supabase
+    .from("habits")
+    .select("kind, period")
+    .eq("id", habitId)
+    .maybeSingle();
+  if (!current) throw new Error("No such habit.");
+
+  const color = str(formData, "color");
+
+  let target: number | null = null;
+  let unit: string | null = null;
+
+  if (current.kind === "check") {
+    target = 1; // "did you?" has exactly one target, and the DB rejects any other.
+  } else {
+    const raw = str(formData, "target");
+    if (raw !== "") {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n <= 0) throw new Error("Target must be more than zero.");
+      target = n;
+    }
+    unit = str(formData, "unit") || null;
+  }
+
+  const { error } = await supabase
+    .from("habits")
+    .update({
+      name,
+      target,
+      unit,
+      ...(/^#[0-9a-fA-F]{6}$/.test(color) ? { color } : {}),
+    })
+    .eq("id", habitId);
+  if (error) throw new Error(`Could not save: ${error.message}`);
+
+  // Re-freeze the goal onto entries whose period hasn't SETTLED yet.
+  //
+  // The snapshot exists to protect verdicts, and an unsettled period has no verdict to
+  // protect — nothing has been decided about today. So today follows the new goal while
+  // every settled day keeps the one it was actually judged against.
+  //
+  // Without this, the most obvious edit there is quietly does nothing visible: add a
+  // target to a habit you'd been tracking untracked, and today's entry keeps its null
+  // snapshot, stays "untracked", and shows no bar. It reads as a broken save.
+  const today = await viewerToday();
+  const unsettledFrom = current.period === "week" ? weekStartDate(today) : today;
+
+  const { error: reErr } = await supabase
+    .from("habit_entries")
+    .update({ target_snapshot: target })
+    .eq("habit_id", habitId)
+    .gte("occurred_on", unsettledFrom);
+  if (reErr) throw new Error(`Saved, but could not re-apply to today: ${reErr.message}`);
 
   revalidateHabits();
 }

@@ -2,21 +2,7 @@
 
 import { useState } from "react";
 import { createHabit } from "./habit-actions";
-
-/**
- * Google Calendar's own palette, mirrored from lib/google/calendar.ts, so a habit dot
- * sits beside a block dot without looking like it wandered in from another app.
- */
-const COLORS = [
-  "#7986CB",
-  "#33B679",
-  "#039BE5",
-  "#8E24AA",
-  "#E67C73",
-  "#F6BF26",
-  "#F4511E",
-  "#616161",
-];
+import { COLORS, ColorPicker } from "./habit-colors";
 
 /**
  * Declaring a habit, inline rather than in a modal.
@@ -134,25 +120,7 @@ export function HabitForm() {
       </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--color-kumo-line)] pt-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-[var(--text-color-kumo-subtle)]">Colour</span>
-          {COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setColor(c)}
-              aria-label={`Colour ${c}`}
-              aria-pressed={color === c}
-              className={
-                "size-5 cursor-pointer rounded-full transition " +
-                (color === c
-                  ? "ring-2 ring-[var(--color-kumo-focus)] ring-offset-2 ring-offset-[var(--color-kumo-base)]"
-                  : "")
-              }
-              style={{ backgroundColor: c }}
-            />
-          ))}
-        </div>
+        <ColorPicker value={color} onChange={setColor} />
 
         <button type="submit" disabled={busy} className="ds-btn ds-btn--emphasis">
           {busy ? "Adding…" : "Add habit"}
