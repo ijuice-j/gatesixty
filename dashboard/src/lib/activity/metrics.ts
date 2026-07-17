@@ -94,11 +94,17 @@ export function formatMinutes(min: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Habits
+// Recurring blocks
 //
-// A recurring calendar block IS a habit. Google returns `recurringEventId` on
-// every instance (we pass singleEvents:true), which is the exact identity — but
-// we don't store it yet, so we group on the TITLE instead.
+// A block you scheduled more than once — DERIVED from Google Calendar, never
+// declared. Called a RecurringBlock and not a Habit on purpose: a habit is a
+// separate, user-declared thing with a target and a logged value, and it is not
+// reconstructed from the calendar at all. One word for both is how the two get
+// confused; the UI has said "Recurring blocks" since this shipped.
+//
+// Google returns `recurringEventId` on every instance (we pass singleEvents:true),
+// which is the exact identity — but we don't store it yet, so we group on the
+// TITLE instead.
 //
 // This is a deliberate heuristic, not an oversight: it needs no migration and it
 // is right for every event whose name is stable. Its failure mode is honest and
@@ -107,7 +113,7 @@ export function formatMinutes(min: number): string {
 // function keys on that and falls back to the title for pre-existing rows.
 // ---------------------------------------------------------------------------
 
-export type Habit = {
+export type RecurringBlock = {
   key: string;
   title: string;
   color: string;
@@ -124,15 +130,18 @@ type Dated = { date: string; items: DayItem[] };
 const keyOf = (title: string) => title.trim().toLowerCase();
 
 /**
- * Roll a range of reconstructed days up into per-habit stats.
+ * Roll a range of reconstructed days up into per-block stats.
  * `days` must be in ascending date order.
  *
- * `minOccurrences` exists because a block that happened ONCE is not a habit — it's an
+ * `minOccurrences` exists because a block that happened ONCE is not recurring — it's an
  * appointment. Left unfiltered, a one-off meeting you skipped shows up as
  * "0/1 · 0% · streak —" and sits at the top of a worst-first table, crowding out the
  * recurring block you're genuinely failing to keep. Two is the floor for "recurring".
  */
-export function habitsOverRange(days: Dated[], minOccurrences = 2): Habit[] {
+export function recurringBlocksOverRange(
+  days: Dated[],
+  minOccurrences = 2,
+): RecurringBlock[] {
   type Acc = {
     title: string;
     color: string;
@@ -160,13 +169,13 @@ export function habitsOverRange(days: Dated[], minOccurrences = 2): Habit[] {
     }
   }
 
-  const habits: Habit[] = [];
+  const blocks: RecurringBlock[] = [];
   for (const [key, a] of acc) {
-    if (a.scheduled < minOccurrences) continue; // an appointment, not a habit
+    if (a.scheduled < minOccurrences) continue; // an appointment, not a recurring block
     // Count back from the most recent settled occurrence until one was missed.
     let streak = 0;
     for (let i = a.outcomes.length - 1; i >= 0 && a.outcomes[i]; i--) streak++;
-    habits.push({
+    blocks.push({
       key,
       title: a.title,
       color: a.color,
@@ -178,7 +187,7 @@ export function habitsOverRange(days: Dated[], minOccurrences = 2): Habit[] {
   }
 
   // Worst first: the block you keep dropping is the one you need to see.
-  return habits.sort((x, y) => x.ratio - y.ratio || y.scheduled - x.scheduled);
+  return blocks.sort((x, y) => x.ratio - y.ratio || y.scheduled - x.scheduled);
 }
 
 /**

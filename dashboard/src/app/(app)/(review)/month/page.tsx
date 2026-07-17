@@ -14,7 +14,7 @@ import {
 import {
   followThrough,
   totalFollowThrough,
-  habitsOverRange,
+  recurringBlocksOverRange,
   pct,
 } from "@/lib/activity/metrics";
 import {
@@ -26,9 +26,9 @@ import {
   weekdayIndex,
 } from "@/lib/time";
 import type { ActivityLog } from "@/lib/types";
-import { TimezoneSync } from "../../timezone-sync";
-import { MetricHeader } from "../../metric-header";
-import { ReconnectBanner, LoadErrorBanner } from "../../banners";
+import { TimezoneSync } from "../../../timezone-sync";
+import { MetricHeader } from "../../../metric-header";
+import { ReconnectBanner, LoadErrorBanner } from "../../../banners";
 
 // The ledger is read per request and never cached. The CALENDAR is cached for 5 minutes
 // (lib/google/calendar.ts) — see the note in ../page.tsx.
@@ -111,9 +111,9 @@ export default async function MonthPage({
   const ft = totalFollowThrough(perDay.map((d) => d.ft));
   const prevFt = totalFollowThrough(prevMonth.map((d) => followThrough(d.items)));
 
-  const habits = habitsOverRange(month);
+  const blocks = recurringBlocksOverRange(month);
   const blockedDays = perDay.filter((d) => d.ft.plannedMin > 0).length;
-  const best = bestStreak(habits);
+  const best = bestStreak(blocks);
 
   const monthLabel = new Date(`${first}T12:00:00Z`).toLocaleDateString("en-US", {
     month: "long",
@@ -184,12 +184,12 @@ export default async function MonthPage({
               </dl>
             </section>
 
-            {/* The habits. Worst first — the block you keep dropping is the one to see. */}
+            {/* Worst first — the block you keep dropping is the one to see. */}
             <section>
               <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
                 Recurring blocks · worst first
               </h3>
-              {habits.length === 0 ? (
+              {blocks.length === 0 ? (
                 <div className="ds-card ds-card--bordered">
                   <p className="text-base text-[var(--text-color-kumo-subtle)]">
                     Nothing blocked this month.
@@ -214,7 +214,7 @@ export default async function MonthPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {habits.map((h) => {
+                    {blocks.map((h) => {
                       const p = Math.round(h.ratio * 100);
                       const bad = p < 60;
                       return (
@@ -263,7 +263,7 @@ export default async function MonthPage({
                 </table>
               )}
               <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
-                Grouped by title — a habit identity already in your data.
+                Grouped by title — a recurring identity already in your data.
               </p>
             </section>
           </div>
@@ -336,6 +336,6 @@ function Heatmap({
 }
 
 /** The longest kept-run any single block managed this month. */
-function bestStreak(habits: { streak: number }[]): number {
-  return habits.reduce((m, h) => Math.max(m, h.streak), 0);
+function bestStreak(blocks: { streak: number }[]): number {
+  return blocks.reduce((m, b) => Math.max(m, b.streak), 0);
 }
