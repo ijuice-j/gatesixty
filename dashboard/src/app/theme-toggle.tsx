@@ -1,19 +1,31 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 const ICON = { width: 16, height: 16, viewBox: "0 0 16 16", fill: "none" } as const;
+
+/** Hydration happens once and never un-happens, so there is nothing to subscribe to. */
+const subscribeToNothing = () => () => {};
 
 /**
  * Light/dark switch. The resolved theme is only known on the client, so render a fixed-size
  * placeholder until mount — otherwise the server markup disagrees with the first client paint
  * and the button visibly flips icon on hydration.
+ *
+ * "Have we hydrated yet" is read through useSyncExternalStore rather than the older
+ * setState-in-an-effect trick: it returns the server snapshot (false) during SSR and through
+ * hydration, then the client one (true). Same two renders, but React drives them — the effect
+ * version queues a state write purely to learn something React already knew, which is what
+ * react-hooks/set-state-in-effect is pointing at.
  */
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    subscribeToNothing,
+    () => true, // client
+    () => false, // server + hydration
+  );
 
   const isDark = resolvedTheme === "dark";
 

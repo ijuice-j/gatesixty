@@ -1,0 +1,56 @@
+name: CI
+
+# Every push to main deploys to production, so the gate has to sit on the PR — by the
+# time it's on main it's already going out.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A second push supersedes the first; don't finish a run nobody will read.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dashboard:
+    name: dashboard — lint, test, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Takes the version from dashboard/package.json's packageManager field, so CI and a
+      # laptop can't quietly drift onto different pnpm majors.
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: dashboard/package.json
+
+      # The tests run through `node --experimental-strip-types`, so the Node version is
+      # load-bearing, not incidental — it has to be one where type-stripping is stable.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+
+      # --frozen-lockfile is the point: a lockfile that disagrees with package.json fails
+      # here rather than resolving to something different from what anyone tested.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      # No secrets, deliberately. Every env read lives inside a function, so the build
+      # compiles without them — verified by building with .env.local moved aside. This repo
+      # is public; a build gate is not worth putting credentials in reach of a fork.
+      - name: Build
+        run: pnpm build
