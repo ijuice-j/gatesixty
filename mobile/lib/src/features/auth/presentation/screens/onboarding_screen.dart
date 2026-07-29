@@ -11,6 +11,12 @@ class OnboardingScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final connecting = ref.watch(authControllerProvider);
+    // Read, not watch: this isn't reactive state. The rebuild that shows it is the one
+    // caused by `connecting` flipping back to false when the attempt settles — which is
+    // exactly the moment there is something to say.
+    final error = connecting
+        ? null
+        : ref.read(googleAuthServiceProvider).lastConnectError;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -42,6 +48,29 @@ class OnboardingScreen extends ConsumerWidget {
                       height: 1.4,
                     ),
                   ),
+                  if (error != null) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0x33FF5252),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0x66FF5252)),
+                      ),
+                      child: Text(
+                        error,
+                        style: const TextStyle(
+                          color: Color(0xFFFFD5D5),
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 40),
                   SizedBox(
                     width: double.infinity,

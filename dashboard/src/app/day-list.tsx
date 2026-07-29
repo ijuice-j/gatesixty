@@ -129,7 +129,7 @@ function Row({
       </div>
 
       {/* Duration, weighted — the whole reason the metric counts hours. */}
-      <div className="hidden w-[132px] shrink-0 items-center gap-2.5 sm:flex">
+      <div className="hidden w-[152px] shrink-0 items-center gap-2.5 sm:flex">
         <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-kumo-fill)]">
           <span
             className="block h-full rounded-full"
@@ -143,7 +143,10 @@ function Row({
             }}
           />
         </span>
-        <span className="w-11 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
+        {/* Fixed width, not content width: every bar has to start at the same x for the
+            lengths to be comparable at all. Wide enough for the longest string
+            formatMinutes can return ("12h 45m"), so it never wraps to a second line. */}
+        <span className="w-16 shrink-0 whitespace-nowrap text-right font-mono text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
           {min ? formatMinutes(min) : "—"}
         </span>
       </div>

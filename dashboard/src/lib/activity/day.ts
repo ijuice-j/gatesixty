@@ -1,4 +1,12 @@
-import { eventColor, DEFAULT_EVENT_COLOR, type GcalEvent } from "@/lib/google/calendar";
+// Relative and extensioned rather than "@/lib/google/calendar": these are VALUE imports,
+// and _day.test.ts runs under `node --experimental-strip-types`, which cannot expand the
+// `@/` alias. calendar.ts is safe to load bare — no env is read at module scope.
+import {
+  eventColor,
+  colorIdForHex,
+  DEFAULT_EVENT_COLOR,
+  type GcalEvent,
+} from "../google/calendar.ts";
 import type { ActivityLog } from "@/lib/types";
 
 export type DayStatus = "done" | "not_done" | "upcoming";
@@ -10,6 +18,14 @@ export type DayItem = {
   start: string | null; // ISO timestamptz
   end: string | null;
   color: string;
+  /**
+   * Google's colorId ("1".."11"), or null when the event has no colour set.
+   *
+   * Carried alongside `color` rather than derived from it: `color` is a hex that can
+   * come from the frozen ledger snapshot, and hex→colorId is only recoverable because
+   * the palette happens to be 1:1. This is the value categories resolve on.
+   */
+  colorId: string | null;
   status: DayStatus;
 };
 
@@ -66,6 +82,14 @@ export function reconstructDay(
         start: log.planned_start ?? start,
         end: log.planned_end ?? end,
         color: log.color ?? eventColor(ev.colorId),
+        // The LIVE colour wins here, unlike every other field on this row — and the
+        // asymmetry is the point. The snapshot exists to protect a verdict: what you
+        // marked done, when, and for how long must not move under you. A category is
+        // not a verdict, it's a filing decision, and re-filing has to reach backwards
+        // or the whole "recolour your history" path is dead on arrival. Taking the
+        // frozen hex instead would mean a block you recolour in Google stays in its
+        // old category forever, with no way to fix it short of a backfill.
+        colorId: ev.colorId ?? null,
         status: "done",
       });
     } else {
@@ -76,6 +100,7 @@ export function reconstructDay(
         start,
         end,
         color: eventColor(ev.colorId),
+        colorId: ev.colorId ?? null,
         status: ended ? "not_done" : "upcoming",
       });
     }
@@ -91,6 +116,10 @@ export function reconstructDay(
       start: log.planned_start,
       end: log.planned_end,
       color: log.color ?? DEFAULT_EVENT_COLOR,
+      // No live event to read a colorId from — this row outlived it. The frozen hex
+      // is all there is, so reverse it. Recolouring can't reach these (there's
+      // nothing left in Google to recolour), which is the honest outcome.
+      colorId: colorIdForHex(log.color),
       status: "done",
     });
   }

@@ -14,6 +14,8 @@ import {
 import { followThrough, totalFollowThrough } from "@/lib/activity/metrics";
 import { habitsForDate, scoreDay } from "@/lib/habits/metrics";
 import { HABIT_COLS, ENTRY_COLS, toHabit, toEntry } from "@/lib/habits/rows";
+import { categoriesOverRange } from "@/lib/categories/metrics";
+import { CATEGORY_COLS, toCategory } from "@/lib/categories/rows";
 import {
   dateStringInTz,
   shiftDate,
@@ -25,6 +27,7 @@ import { TimezoneSync } from "../../timezone-sync";
 import { DayList } from "../../day-list";
 import { HabitList } from "../../habit-list";
 import { MetricHeader } from "../../metric-header";
+import { CategoryRollupTable } from "../../category-rollup";
 import { ReconnectBanner, LoadErrorBanner } from "../../banners";
 
 // The ledger is read per request and never cached — marking something done must show up
@@ -72,8 +75,14 @@ export default async function Home({
   // queries, stacking network round-trips for no reason: RLS already scopes every table
   // to its owner, so none of them needs to wait for the user id to come back.
   const supabase = await createClient();
-  const [user, { data: cred }, { data: logData }, { data: habitData }, { data: entryData }] =
-    await Promise.all([
+  const [
+    user,
+    { data: cred },
+    { data: logData },
+    { data: habitData },
+    { data: entryData },
+    { data: categoryData },
+  ] = await Promise.all([
       getUser(), // cache()'d — the layout already asked, so this costs nothing
       supabase.from("google_credentials").select("refresh_token").maybeSingle(),
       supabase
@@ -92,6 +101,8 @@ export default async function Home({
         .select(ENTRY_COLS)
         .gte("occurred_on", week.start)
         .lte("occurred_on", week.end),
+      // Eleven rows at most, and no date filter — a category is a naming, not an event.
+      supabase.from("event_categories").select(CATEGORY_COLS).order("color_id"),
     ]);
   if (!user) redirect("/login");
 
@@ -132,6 +143,11 @@ export default async function Home({
 
   const items = days.find((d) => d.date === date)?.items ?? [];
   const ft = followThrough(items);
+
+  // This one day only — not the trailing seven the average is built from. The sidebar
+  // answers "where did TODAY go", beside the habits you kept today.
+  const categories = (categoryData ?? []).map(toCategory);
+  const categoryRows = categoriesOverRange([{ date, items }], categories);
 
   // "Your average" is the other six days — comparing today with itself is no comparison at
   // all. Days with nothing blocked contribute nothing, so a rest day can't drag the baseline.
@@ -204,9 +220,31 @@ export default async function Home({
           {!needsReconnect && !loadError && <DayList items={items} date={date} tz={tz} />}
         </div>
 
-        {/* Outside the calendar guards on purpose: a habit has no Google event behind it,
-            so a dead token or a failed fetch is no reason to stop you logging pushups. */}
         <aside className="min-w-0">
+          {/*
+           * Above the habits, and INSIDE the calendar guards — unlike them.
+           *
+           * Both answer "what did today consist of", which is why they share the column
+           * rather than sitting at opposite ends of the page. But a category is a naming
+           * of a Google colour, so a dead token leaves it with nothing to group: rendering
+           * an empty table there would read as "you did nothing today" when the truth is
+           * "we couldn't look". Habits below survive that same failure, because they never
+           * needed Google at all.
+           */}
+          {!needsReconnect && !loadError && (
+            <section className="mb-6">
+              <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+                Where the day went
+              </h2>
+              <CategoryRollupTable
+                rows={categoryRows}
+                emptyHint={categories.length === 0}
+              />
+            </section>
+          )}
+
+          {/* Outside the calendar guards on purpose: a habit has no Google event behind it,
+              so a dead token or a failed fetch is no reason to stop you logging pushups. */}
           <HabitList
             rows={habitRows}
             score={scoreDay(habitRows)}

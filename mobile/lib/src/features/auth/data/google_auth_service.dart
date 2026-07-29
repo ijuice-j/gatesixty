@@ -25,8 +25,18 @@ class GoogleAuthService {
   bool _ready = false; // authenticated AND Calendar scope authorized
   bool _initialized = false;
   Future<void>? _restoreFuture;
+  String? _lastConnectError;
 
   bool get isSignedIn => _ready;
+
+  /// Why the last [connect] failed, or `null` if it didn't (or was cancelled).
+  ///
+  /// Exists because a swallowed [GoogleSignInException] and a deliberate cancel look
+  /// identical from the outside: the button returns to its idle label and nothing else
+  /// changes. That is indistinguishable from "the app is broken", and the code inside the
+  /// exception — `clientConfigurationError` vs `providerConfigurationError` vs
+  /// `uiUnavailable` — is the one thing that says which.
+  String? get lastConnectError => _lastConnectError;
 
   /// The current Google ID token (a JWT), or `null` when no user is present.
   /// Exchanged for a Supabase session (`signInWithIdToken`) so RLS-protected
@@ -85,11 +95,28 @@ class GoogleAuthService {
   }
 
   /// Interactive sign-in + authorization of the Calendar scope.
+  ///
+  /// Records why it failed before rethrowing, so the caller can keep its existing
+  /// control flow and the UI still has something to show.
   Future<void> connect() async {
-    final account = await _signIn.authenticate(scopeHint: scopes);
-    _currentUser = account;
-    await account.authorizationClient.authorizeScopes(scopes);
-    _setReady(true);
+    _lastConnectError = null;
+    try {
+      final account = await _signIn.authenticate(scopeHint: scopes);
+      _currentUser = account;
+      await account.authorizationClient.authorizeScopes(scopes);
+      _setReady(true);
+    } on GoogleSignInException catch (e) {
+      // A cancel is not a failure and must not leave an error on screen — you closed
+      // the sheet, you know why nothing happened.
+      _lastConnectError =
+          e.code == GoogleSignInExceptionCode.canceled ? null : describeSignInError(e);
+      debugPrint('[auth] connect failed: ${e.code.name} — ${e.description}');
+      rethrow;
+    } catch (e) {
+      _lastConnectError = 'Sign-in failed: $e';
+      debugPrint('[auth] connect error: $e');
+      rethrow;
+    }
   }
 
   Future<void> disconnect() async {
@@ -147,6 +174,36 @@ class GoogleAuthService {
 
   void dispose() {
     _readyController.close();
+  }
+}
+
+/// Turns a [GoogleSignInException] into something worth putting on a screen.
+///
+/// The raw `toString()` is a Dart type name and an enum, which tells a user nothing and
+/// tells a developer only slightly more. These map each code to what actually has to be
+/// fixed — the configuration errors in particular, which on Android are almost always a
+/// signing-certificate SHA-1 that isn't registered against the OAuth client.
+String describeSignInError(GoogleSignInException e) {
+  final detail = (e.description ?? '').trim();
+  final suffix = detail.isEmpty ? '' : '\n$detail';
+  switch (e.code) {
+    case GoogleSignInExceptionCode.canceled:
+      return 'Sign-in cancelled.';
+    case GoogleSignInExceptionCode.interrupted:
+      return 'Sign-in was interrupted. Check your connection and try again.$suffix';
+    case GoogleSignInExceptionCode.clientConfigurationError:
+      return "This build isn't registered with Google. Its signing certificate (SHA-1) "
+          'needs adding to the Android OAuth client in Google Cloud Console.$suffix';
+    case GoogleSignInExceptionCode.providerConfigurationError:
+      return 'Google Sign-In is misconfigured for this app — check the OAuth client and '
+          'that Google Play services is available on this device.$suffix';
+    case GoogleSignInExceptionCode.uiUnavailable:
+      return "Google couldn't show the sign-in screen. Update Google Play services and "
+          'try again.$suffix';
+    case GoogleSignInExceptionCode.userMismatch:
+      return 'That was a different Google account than the one being re-authorized.$suffix';
+    case GoogleSignInExceptionCode.unknownError:
+      return 'Sign-in failed (${e.code.name}).$suffix';
   }
 }
 
