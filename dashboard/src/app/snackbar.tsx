@@ -22,43 +22,50 @@ export function Snackbar({
   onDismiss,
 }: {
   tone: SnackTone;
-  message: string;
+  /** null renders the empty live region and nothing visible. */
+  message: string | null;
   action?: React.ReactNode;
   onDismiss: () => void;
 }) {
   useEffect(() => {
-    if (tone !== "success") return;
+    if (message === null || tone !== "success") return;
     const t = setTimeout(onDismiss, 3000);
     return () => clearTimeout(t);
   }, [tone, message, onDismiss]);
 
   return (
+    // The live region is ALWAYS mounted, and only its contents come and go. A region
+    // inserted into the DOM already holding its text is unreliably announced — assistive
+    // tech watches an existing region for changes, so appearing wholesale can be missed
+    // entirely. That would silently undo the point of showing a failure at all.
     <div
       className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center p-4"
-      // Announced politely: this narrates the result of something you just did, so it
-      // should not interrupt a screen reader mid-sentence.
+      // Polite: this narrates the result of something you just did, so it should not
+      // interrupt a screen reader mid-sentence.
       role="status"
       aria-live="polite"
     >
-      <div
-        className={
-          "ds-banner pointer-events-auto max-w-xl shadow-lg " +
-          (tone === "success" ? "ds-banner--success" : "ds-banner--danger")
-        }
-      >
-        <div className="ds-banner__content">{message}</div>
-        <div className="ds-banner__actions flex items-center gap-2">
-          {action}
-          <button
-            type="button"
-            className="ds-btn ds-btn--ghost ds-btn--sm"
-            onClick={onDismiss}
-            aria-label="Dismiss"
-          >
-            Dismiss
-          </button>
+      {message !== null && (
+        <div
+          className={
+            "ds-banner pointer-events-auto max-w-xl shadow-lg " +
+            (tone === "success" ? "ds-banner--success" : "ds-banner--danger")
+          }
+        >
+          <div className="ds-banner__content">{message}</div>
+          <div className="ds-banner__actions flex items-center gap-2">
+            {action}
+            <button
+              type="button"
+              className="ds-btn ds-btn--ghost ds-btn--sm"
+              onClick={onDismiss}
+              aria-label="Dismiss"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

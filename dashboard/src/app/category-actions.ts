@@ -12,8 +12,11 @@ async function client() {
   return { supabase, user };
 }
 
-/** Naming a colour changes every rollup that reads it, at every zoom. */
+/** Naming a colour changes every rollup that reads it, at every zoom — and "/" is one
+ *  of them. It renders "Where the day went" beside the habits, so leaving it out here
+ *  left the day view serving a stale router-cache payload with the old name. */
 function revalidateCategories() {
+  revalidatePath("/");
   revalidatePath("/categories");
   revalidatePath("/week");
   revalidatePath("/month");

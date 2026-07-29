@@ -142,22 +142,22 @@ export function RefreshButton({ fetchedAt }: { fetchedAt: number | null }) {
         </button>
       </div>
 
-      {snack && (
-        <Snackbar
-          tone={snack.tone}
-          message={snack.message}
-          onDismiss={dismiss}
-          action={
-            snack.reconnect ? (
-              <form action="/auth/signout" method="post">
-                <button className="ds-btn ds-btn--outline ds-btn--sm" type="submit">
-                  Reconnect
-                </button>
-              </form>
-            ) : undefined
-          }
-        />
-      )}
+      {/* Rendered unconditionally — see Snackbar: the live region has to already be in
+          the DOM for its text to be announced when it arrives. */}
+      <Snackbar
+        tone={snack?.tone ?? "success"}
+        message={snack?.message ?? null}
+        onDismiss={dismiss}
+        action={
+          snack?.reconnect ? (
+            <form action="/auth/signout" method="post">
+              <button className="ds-btn ds-btn--outline ds-btn--sm" type="submit">
+                Reconnect
+              </button>
+            </form>
+          ) : undefined
+        }
+      />
     </>
   );
 }
