@@ -17,8 +17,8 @@ class GoogleCalendarScheduleRepository implements ScheduleRepository {
 
   @override
   Future<List<ScheduleEvent>> getTodaySchedule() async {
-    final raw = await _dataSource.getTodayEvents();
-    return mapEventsToToday(raw, DateTime.now());
+    final raw = await _dataSource.getEventsThroughTomorrow();
+    return mapEventsToFace(raw, DateTime.now());
   }
 }
 
@@ -41,7 +41,31 @@ class GoogleCalendarScheduleRepository implements ScheduleRepository {
 ///   collapse to a zero-length wrap.
 ///
 /// All-day events (no `dateTime`) are skipped.
-List<ScheduleEvent> mapEventsToToday(List<gcal.Event> raw, DateTime now) {
+///
+/// ## Why tomorrow's early blocks are here too
+///
+/// The face is a 24-hour dial and the engine measures "next" as
+/// `(start - now + 1440) % 1440`, so it always finds SOMETHING — it wraps past
+/// midnight and lands back on today's earliest block. With today's list alone,
+/// a Wednesday whose last block ends at 23:00 reported the next event as that
+/// day's own 11:00 block: a phantom 12-hour gap, when the real answer was
+/// Thursday 00:30, ninety minutes away.
+///
+/// Tomorrow's blocks are therefore admitted, but only those starting **before
+/// the first of today's** — i.e. the ones that fall in the empty pre-dawn arc of
+/// the dial. That bound is what keeps this safe:
+///
+/// * They cannot collide with a today block, because that arc is by definition
+///   unoccupied — and two blocks on one minute-of-day are indistinguishable to
+///   `isActiveAt`, which would make tomorrow's 11:00 "current" at 11:00 today.
+/// * They are always within 24h of now, so the `% 1440` arithmetic that assumes
+///   as much stays honest. A block later tomorrow is more than a dial-turn away
+///   and would be read as imminent; it is dropped rather than mis-stated.
+///
+/// When today has no blocks at all there is no "first of today" to bound
+/// against, so `now` itself is the bound — the same guarantee by another route,
+/// since anything earlier on the dial than this moment is still under 24h out.
+List<ScheduleEvent> mapEventsToFace(List<gcal.Event> raw, DateTime now) {
   final todayStart = DateTime(now.year, now.month, now.day);
   final todayEnd = todayStart.add(const Duration(days: 1));
 
@@ -70,23 +94,64 @@ List<ScheduleEvent> mapEventsToToday(List<gcal.Event> raw, DateTime now) {
         ? (startMinute + 1439) % 1440
         : end.hour * 60 + end.minute;
 
-    final name = event.summary?.trim();
     events.add(
-      ScheduleEvent(
-        id: event.id ?? 'gcal_$i',
-        name: (name == null || name.isEmpty) ? '(busy)' : name,
-        emoji: '', // gcal has no emoji field; any emoji lives in the title
-        color: _eventColor(event.colorId),
-        startMinute: startMinute,
-        endMinute: endMinute,
-        // Snapshot the true (unclipped) planned window for activity tracking —
-        // the clipping above only affects the minute-of-day display math.
-        plannedStart: start,
-        plannedEnd: end,
-      ),
+      _toScheduleEvent(event, i, startMinute, endMinute, start, end),
     );
   }
+
+  // The pre-dawn arc: everything on the dial before today's first block. With
+  // no blocks today, this moment is the bound instead — see the doc comment.
+  final nowMinute = now.hour * 60 + now.minute;
+  final bound = events.isEmpty
+      ? nowMinute
+      : events.map((e) => e.startMinute).reduce((a, b) => a < b ? a : b);
+
+  for (var i = 0; i < raw.length; i++) {
+    final event = raw[i];
+    final start = event.start?.dateTime?.toLocal();
+    final end = event.end?.dateTime?.toLocal();
+    if (start == null || end == null) continue;
+
+    // Tomorrow's own blocks only — anything overlapping today was handled above.
+    if (start.isBefore(todayEnd)) continue;
+    if (!start.isBefore(todayEnd.add(const Duration(days: 1)))) continue;
+
+    final startMinute = start.hour * 60 + start.minute;
+    if (startMinute >= bound) continue; // past the pre-dawn arc; not on this dial
+
+    final endMinute = end.difference(start).inMinutes >= 1440
+        ? (startMinute + 1439) % 1440
+        : end.hour * 60 + end.minute;
+
+    events.add(
+      _toScheduleEvent(event, raw.length + i, startMinute, endMinute, start, end),
+    );
+  }
+
   return events;
+}
+
+ScheduleEvent _toScheduleEvent(
+  gcal.Event event,
+  int index,
+  int startMinute,
+  int endMinute,
+  DateTime start,
+  DateTime end,
+) {
+  final name = event.summary?.trim();
+  return ScheduleEvent(
+    id: event.id ?? 'gcal_$index',
+    name: (name == null || name.isEmpty) ? '(busy)' : name,
+    emoji: '', // gcal has no emoji field; any emoji lives in the title
+    color: _eventColor(event.colorId),
+    startMinute: startMinute,
+    endMinute: endMinute,
+    // Snapshot the true (unclipped) planned window for activity tracking — the
+    // clipping above only affects the minute-of-day display math.
+    plannedStart: start,
+    plannedEnd: end,
+  );
 }
 
 Color _eventColor(String? colorId) =>
