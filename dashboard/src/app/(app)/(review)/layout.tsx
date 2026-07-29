@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { getUser } from "@/lib/supabase/user";
+import { getGoogleRefreshToken } from "@/lib/supabase/google-credentials";
 import { lastCalendarFetchAt } from "@/lib/google/calendar";
 import { AppShell } from "../../shell";
 import { ZoomNav } from "../../review-nav";
@@ -24,20 +24,17 @@ import { RefreshButton } from "../../refresh-button";
  * cache()'d, so asking twice costs one query.
  */
 export default async function ReviewLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-  const [user, { data: cred }] = await Promise.all([
+  const [user, refreshToken] = await Promise.all([
     getUser(),
-    supabase.from("google_credentials").select("refresh_token").maybeSingle(),
+    getGoogleRefreshToken(),
   ]);
   if (!user) redirect("/login");
 
   // The freshness label belongs beside the button, and the button lives here — so the
   // token is read here too rather than threaded up from a page. Layouts and pages are
-  // siblings; a page cannot hand props to this slot. One indexed maybeSingle(), in
-  // parallel with the auth check, is the whole cost.
-  const fetchedAt = cred?.refresh_token
-    ? lastCalendarFetchAt(cred.refresh_token)
-    : null;
+  // siblings; a page cannot hand props to this slot. Both are cache()'d, so asking here
+  // and again in the page it wraps costs one query, not two.
+  const fetchedAt = refreshToken ? lastCalendarFetchAt(refreshToken) : null;
 
   return (
     <AppShell

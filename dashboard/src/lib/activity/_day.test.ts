@@ -77,6 +77,9 @@ await test("a DONE block takes the LIVE colour, not the frozen snapshot", () => 
   );
   eq(item.status, "done", "still a kept block");
   eq(item.colorId, "6", "recolouring reaches backwards — category follows the live event");
+  // And the SWATCH follows it. Filing by the new colour while drawing the old one made
+  // the row contradict itself: old dot, new category.
+  eq(item.color, "#F4511E", "the hex moves with the id, not with the snapshot");
 });
 
 await test("a done block's other fields still come from the frozen snapshot", () => {

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getUser } from "@/lib/supabase/user";
+import { getGoogleRefreshToken } from "@/lib/supabase/google-credentials";
 import { listCalendarEventsForMonths, GoogleAuthExpiredError } from "@/lib/google/calendar";
 import {
   reconstructRange,
@@ -84,14 +85,14 @@ export default async function MonthPage({
   const supabase = await createClient();
   const [
     user,
-    { data: cred },
+    refreshToken,
     { data: logData },
     { data: habitData },
     { data: entryData },
     { data: categoryData },
   ] = await Promise.all([
       getUser(),
-      supabase.from("google_credentials").select("refresh_token").maybeSingle(),
+      getGoogleRefreshToken(),
       supabase
         .from("activity_logs")
         .select(
@@ -126,15 +127,15 @@ export default async function MonthPage({
   const logs = (logData ?? []) as ActivityLog[];
 
   let all: ReconstructedDay[] = [];
-  let needsReconnect = !cred?.refresh_token;
+  let needsReconnect = !refreshToken;
   let loadError: string | null = null;
 
-  if (cred?.refresh_token) {
+  if (refreshToken) {
     try {
       // Exactly the two months this view needs — and they're the same cache entries the
       // day and week views fill, so switching zoom inside a month costs Google nothing.
       const events = await listCalendarEventsForMonths(
-        cred.refresh_token,
+        refreshToken,
         monthsSpanned(dates),
         (m) => monthBounds(m, tz),
       );

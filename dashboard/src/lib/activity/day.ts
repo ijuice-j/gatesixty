@@ -81,14 +81,21 @@ export function reconstructDay(
         title: log.title || ev.summary?.trim() || "(busy)",
         start: log.planned_start ?? start,
         end: log.planned_end ?? end,
-        color: log.color ?? eventColor(ev.colorId),
-        // The LIVE colour wins here, unlike every other field on this row — and the
-        // asymmetry is the point. The snapshot exists to protect a verdict: what you
-        // marked done, when, and for how long must not move under you. A category is
-        // not a verdict, it's a filing decision, and re-filing has to reach backwards
-        // or the whole "recolour your history" path is dead on arrival. Taking the
-        // frozen hex instead would mean a block you recolour in Google stays in its
-        // old category forever, with no way to fix it short of a backfill.
+        // COLOUR AND COLOURID BOTH COME FROM THE LIVE EVENT, unlike every other field
+        // on this row — and they must move together or they contradict each other.
+        //
+        // The asymmetry with title/start/end is the point. The snapshot exists to
+        // protect a verdict: what you marked done, when, and for how long must not move
+        // under you. A colour is not a verdict, it's a filing decision, and re-filing
+        // has to reach backwards or the whole "recolour your history" path is dead on
+        // arrival — a block you recoloured in Google would sit in its old category
+        // forever, with no way out short of a backfill.
+        //
+        // Taking the live id but the frozen hex was the first cut, and it was wrong:
+        // the day list draws its dot from `color` while the rollup files by `colorId`,
+        // so a recoloured block showed its OLD colour beside its NEW category. One
+        // source for both is what stops the row disagreeing with itself.
+        color: eventColor(ev.colorId),
         colorId: ev.colorId ?? null,
         status: "done",
       });

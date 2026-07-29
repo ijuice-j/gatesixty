@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getUser } from "@/lib/supabase/user";
+import { getGoogleRefreshToken } from "@/lib/supabase/google-credentials";
 import { listCalendarEventsForMonths, GoogleAuthExpiredError } from "@/lib/google/calendar";
 import {
   reconstructRange,
@@ -77,14 +78,14 @@ export default async function Home({
   const supabase = await createClient();
   const [
     user,
-    { data: cred },
+    refreshToken,
     { data: logData },
     { data: habitData },
     { data: entryData },
     { data: categoryData },
   ] = await Promise.all([
       getUser(), // cache()'d — the layout already asked, so this costs nothing
-      supabase.from("google_credentials").select("refresh_token").maybeSingle(),
+      getGoogleRefreshToken(),
       supabase
         .from("activity_logs")
         .select(
@@ -119,15 +120,15 @@ export default async function Home({
   const logs = (logData ?? []) as ActivityLog[];
 
   let days: ReconstructedDay[] = [];
-  let needsReconnect = !cred?.refresh_token;
+  let needsReconnect = !refreshToken;
   let loadError: string | null = null;
 
-  if (cred?.refresh_token) {
+  if (refreshToken) {
     try {
       // Whole months, not a ragged 7-day sliver — so stepping a day left or right lands
       // inside a month we already hold, and costs Google nothing.
       const events = await listCalendarEventsForMonths(
-        cred.refresh_token,
+        refreshToken,
         monthsSpanned(dates),
         (m) => monthBounds(m, tz),
       );
