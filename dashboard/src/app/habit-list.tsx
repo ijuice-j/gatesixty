@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { formatProgress, trim, type HabitProgress } from "@/lib/habits/metrics";
+import { formatProgress, formatWeekdays, trim, type HabitProgress } from "@/lib/habits/metrics";
 import { logHabit } from "./habit-actions";
 
 /**
@@ -98,6 +98,27 @@ function Row({
 }) {
   const { habit, status } = row;
   const missed = status === "missed";
+
+  // Off today — a weekday habit whose schedule skips this weekday. Kept visible rather than
+  // hidden, but dimmed and unloggable: it's not on today's plan, so there's nothing to do
+  // and nothing to score. It's back on its next scheduled day.
+  if (!row.scheduled) {
+    return (
+      <li className="flex items-center gap-2 px-3 py-2.5 opacity-60">
+        <span
+          className="size-2 shrink-0 rounded-full"
+          style={{ backgroundColor: habit.color }}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate text-base font-medium text-[var(--text-color-kumo-inactive)]">
+          {habit.name}
+        </span>
+        <span className="shrink-0 text-xs text-[var(--text-color-kumo-inactive)]">
+          not today{habit.weekdays ? ` · ${formatWeekdays(habit.weekdays)}` : ""}
+        </span>
+      </li>
+    );
+  }
 
   return (
     <li

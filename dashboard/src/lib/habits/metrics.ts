@@ -31,11 +31,17 @@ export type HabitProgress = {
   /**
    * `null` = there is nothing here to judge, which is not a verdict and not a miss.
    *
-   * Only a weekly habit reaches it, and only for a week it did not live end to end —
-   * see isLiveAllWeek. A daily habit is either in your life on the day, and judged, or
-   * it isn't in the list at all.
+   * A weekly habit reaches it for a week it did not live end to end (see isLiveAllWeek); a
+   * weekday habit reaches it on a day it isn't scheduled (see `scheduled`). Otherwise a
+   * daily habit is in your life on the day and judged, or it isn't in the list at all.
    */
   status: HabitStatus | null;
+  /**
+   * Is this habit on the schedule for the date asked about? Always true for a daily or
+   * weekly habit; false for a weekday habit on an off weekday. The day view keeps the row
+   * (greyed, unloggable) so your roster stays visible; `status` is null when this is false.
+   */
+  scheduled: boolean;
 };
 
 /** The window a weekly habit is judged over. Monday…Sunday, inclusive. */
@@ -88,6 +94,35 @@ export function isLive(habit: Habit, date: string): boolean {
 function isLiveAllWeek(habit: Habit, week: Week): boolean {
   return habit.active_spans.some(
     (s) => s.start <= week.start && (s.end === null || week.end < s.end),
+  );
+}
+
+/**
+ * 0=Mon … 6=Sun — the same math as lib/time's weekdayIndex, kept LOCAL on purpose.
+ *
+ * This module must stay import-free of anything but types: the hand-rolled test runner
+ * loads it under `node --experimental-strip-types`, which erases type imports but can't
+ * resolve a value import's `@/` path alias. Constructing a Date from a fixed string reads
+ * no clock, so purity holds. One line duplicated is the price of the module staying
+ * runnable under bare node.
+ */
+function weekdayOf(dateStr: string): number {
+  return (new Date(`${dateStr}T00:00:00Z`).getUTCDay() + 6) % 7;
+}
+
+/**
+ * Is a DAILY habit on the schedule for `date`?
+ *
+ * Every day, unless it's a weekday habit and this weekday isn't in its set — then the day
+ * is *off*: nothing was promised, so it earns no verdict, the same as a rest day. A weekly
+ * habit schedules by the week, not the day, so it's always "on" here; `period !== "day"`
+ * short-circuits before weekdays is ever read.
+ */
+function scheduledOn(habit: Habit, date: string): boolean {
+  return (
+    habit.period !== "day" ||
+    habit.weekdays === null ||
+    habit.weekdays.includes(weekdayOf(date))
   );
 }
 
@@ -217,13 +252,18 @@ export function habitsForDate(
         ? weekTarget(inWeek, habit, week.start)
         : dayTarget(onDay, habit, date);
 
+      // Off-day weekday habits stay in the list — the day view greys them rather than
+      // hiding them — but carry no verdict, so they never enter the day's score.
+      const scheduled = scheduledOn(habit, date);
+
       return {
         habit,
         value: onDay?.value ?? null,
         progress,
         target,
+        scheduled,
         status:
-          weekly && !isLiveAllWeek(habit, week)
+          !scheduled || (weekly && !isLiveAllWeek(habit, week))
             ? null
             : statusOf(habit.period, progress, target, date, today, week.end),
       };
@@ -272,6 +312,16 @@ export function formatProgress(
 /** 45, not 45.00 — but 0.5 stays 0.5. */
 export function trim(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
+}
+
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** "Mon Wed Fri" — a weekday habit's schedule, Mon-first, in week order. */
+export function formatWeekdays(days: number[]): string {
+  return [...days]
+    .sort((a, b) => a - b)
+    .map((d) => WEEKDAY_LABELS[d])
+    .join(" ");
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +427,10 @@ export function habitsForWeek(
 
     const cells: HabitCell[] = dates.map((date) => {
       const onDay = mine.byDay.get(date) ?? null;
-      if (!isLive(habit, date)) return { date, status: null, value: null };
+      // Not alive, or an off weekday — either way no verdict, and the grid renders both as
+      // recessed ground (nothing was promised here).
+      if (!isLive(habit, date) || !scheduledOn(habit, date))
+        return { date, status: null, value: null };
       const target = dayTarget(onDay, habit, date);
       return {
         date,
@@ -474,7 +527,9 @@ export function habitsOverRange(
       }
     } else {
       for (const date of dates) {
-        if (!isLive(habit, date)) continue;
+        // Off weekdays are not on the schedule, so they're out of the denominator: a
+        // Mon/Wed/Fri habit reads "10 of 13 days", not "10 of 30".
+        if (!isLive(habit, date) || !scheduledOn(habit, date)) continue;
         const onDay = mine.byDay.get(date) ?? null;
         const target = dayTarget(onDay, habit, date);
         const status = statusOf(
