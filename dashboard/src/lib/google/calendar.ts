@@ -282,11 +282,34 @@ const monthCache = new Map<string, Cached>();
 
 const cacheKey = (refreshToken: string, month: string) => `${refreshToken}|${month}`;
 
+/**
+ * When we last actually TALKED to Google for this user.
+ *
+ * Deliberately not per month. The question the header asks is "how old is what I'm
+ * looking at", and the answer is bounded by CACHE_TTL_MS regardless of which months are
+ * on screen — so one timestamp per user is both simpler and honest enough. A cache HIT
+ * must not move it: nothing was fetched, and the data on screen is still as old as the
+ * fetch that filled it.
+ *
+ * Keyed by refresh token and unbounded, exactly like `tokenCache` above — one entry per
+ * user, written once per real network call.
+ */
+const lastFetchAt = new Map<string, number>();
+
+/** Epoch ms of the last real Google call for this user, or null if we've never made one
+ *  in this process. Null after a restart even though a page may still render fine. */
+export function lastCalendarFetchAt(refreshToken: string): number | null {
+  return lastFetchAt.get(refreshToken) ?? null;
+}
+
 /** Drop every cached month for this user — what "Fetch fresh" calls. */
 export function invalidateCalendarCache(refreshToken: string): void {
   for (const key of monthCache.keys()) {
     if (key.startsWith(`${refreshToken}|`)) monthCache.delete(key);
   }
+  // `lastFetchAt` is deliberately NOT cleared. Busting the cache doesn't un-happen the
+  // last fetch, and blanking it here would flash "never" between the click and the
+  // re-render that refills it.
 }
 
 /**
@@ -318,6 +341,8 @@ export async function listCalendarEventsForMonths(
 
     const { start, end } = bounds(month);
     const events = await listCalendarEvents(refreshToken, start, end);
+    // A real network call just happened — this is the only place that moves the clock.
+    lastFetchAt.set(refreshToken, Date.now());
 
     if (monthCache.size >= CACHE_MAX) {
       // Evict the oldest. A Map iterates in insertion order, so the first key is it.
@@ -360,4 +385,43 @@ const GOOGLE_EVENT_COLORS: Record<string, string> = {
 
 export function eventColor(colorId?: string): string {
   return (colorId && GOOGLE_EVENT_COLORS[colorId]) || DEFAULT_EVENT_COLOR;
+}
+
+/**
+ * The palette as a list, in Google's own order, with Google's own names.
+ *
+ * Categories are keyed on colorId, so the settings screen has to show the same eleven
+ * swatches Google shows — and name them the same way, or "the green one" means two
+ * different things in two apps. Exported from here rather than re-declared in the UI
+ * so there is one palette in this codebase, not two that drift.
+ */
+export const GOOGLE_COLORS: { id: string; hex: string; name: string }[] = [
+  { id: "1", hex: "#7986CB", name: "Lavender" },
+  { id: "2", hex: "#33B679", name: "Sage" },
+  { id: "3", hex: "#8E24AA", name: "Grape" },
+  { id: "4", hex: "#E67C73", name: "Flamingo" },
+  { id: "5", hex: "#F6BF26", name: "Banana" },
+  { id: "6", hex: "#F4511E", name: "Tangerine" },
+  { id: "7", hex: "#039BE5", name: "Peacock" },
+  { id: "8", hex: "#616161", name: "Graphite" },
+  { id: "9", hex: "#3F51B5", name: "Blueberry" },
+  { id: "10", hex: "#0B8043", name: "Basil" },
+  { id: "11", hex: "#D50000", name: "Tomato" },
+];
+
+/**
+ * Hex back to colorId — the reverse of `eventColor`, and lossy on purpose.
+ *
+ * Needed for ledger-only rows: an event deleted from Google still shows from its
+ * frozen `activity_logs.color` snapshot, and that snapshot stores the HEX, not the
+ * colorId. Reversing it is the only way such a row can still carry a category.
+ *
+ * DEFAULT_EVENT_COLOR maps to null rather than to a colour, because it isn't one —
+ * it's the fallback for "no colorId was ever set", which is exactly Uncategorised.
+ * It is deliberately absent from the palette above so the two can never collide.
+ */
+export function colorIdForHex(hex?: string | null): string | null {
+  if (!hex) return null;
+  const want = hex.toUpperCase();
+  return GOOGLE_COLORS.find((c) => c.hex.toUpperCase() === want)?.id ?? null;
 }

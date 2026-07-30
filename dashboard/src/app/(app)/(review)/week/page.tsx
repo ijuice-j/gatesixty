@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getUser } from "@/lib/supabase/user";
+import { getGoogleRefreshToken } from "@/lib/supabase/google-credentials";
 import { listCalendarEventsForMonths, GoogleAuthExpiredError } from "@/lib/google/calendar";
 import {
   reconstructRange,
@@ -24,6 +25,8 @@ import {
 } from "@/lib/habits/metrics";
 import { HABIT_COLS, ENTRY_COLS, toHabit, toEntry } from "@/lib/habits/rows";
 import type { Habit } from "@/lib/habits/types";
+import { categoriesOverRange } from "@/lib/categories/metrics";
+import { CATEGORY_COLS, toCategory } from "@/lib/categories/rows";
 import {
   resolveViewerTimeZone,
   dateStringInTz,
@@ -33,6 +36,7 @@ import {
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "../../../timezone-sync";
 import { MetricHeader } from "../../../metric-header";
+import { CategoryRollupTable } from "../../../category-rollup";
 import { ReconnectBanner, LoadErrorBanner } from "../../../banners";
 
 // The ledger is read per request and never cached. The CALENDAR is cached for 5 minutes
@@ -75,10 +79,16 @@ export default async function WeekPage({
   // Auth and both queries in parallel — RLS scopes each table to its owner, so neither
   // query has to wait for the user id.
   const supabase = await createClient();
-  const [user, { data: cred }, { data: logData }, { data: habitData }, { data: entryData }] =
-    await Promise.all([
+  const [
+    user,
+    refreshToken,
+    { data: logData },
+    { data: habitData },
+    { data: entryData },
+    { data: categoryData },
+  ] = await Promise.all([
       getUser(),
-      supabase.from("google_credentials").select("refresh_token").maybeSingle(),
+      getGoogleRefreshToken(),
       supabase
         .from("activity_logs")
         .select(
@@ -96,6 +106,8 @@ export default async function WeekPage({
         .select(ENTRY_COLS)
         .gte("occurred_on", monday)
         .lte("occurred_on", sunday),
+      // Eleven rows at most, and no date filter — a category is a naming, not an event.
+      supabase.from("event_categories").select(CATEGORY_COLS).order("color_id"),
     ]);
   if (!user) redirect("/login");
 
@@ -112,13 +124,13 @@ export default async function WeekPage({
   const logs = (logData ?? []) as ActivityLog[];
 
   let all: ReconstructedDay[] = [];
-  let needsReconnect = !cred?.refresh_token;
+  let needsReconnect = !refreshToken;
   let loadError: string | null = null;
 
-  if (cred?.refresh_token) {
+  if (refreshToken) {
     try {
       const events = await listCalendarEventsForMonths(
-        cred.refresh_token,
+        refreshToken,
         monthsSpanned(dates),
         (m) => monthBounds(m, tz),
       );
@@ -139,10 +151,17 @@ export default async function WeekPage({
   const prevFt = totalFollowThrough(prev.map((d) => followThrough(d.items)));
 
   const grid = weekGrid(week);
+
+  const categories = (categoryData ?? []).map(toCategory);
+  const categoryRows = categoriesOverRange(week, categories);
+
   const rangeLabel = `${fmtDay(monday)} – ${fmtDay(shiftDate(monday, 6))}`;
 
   return (
-      <div className="w-full max-w-5xl px-6 py-6">
+      // No max-width on the page: the cap lives on the COLUMNS instead, as on the day
+      // view — capping here and then carving a rail out of it would take the width from
+      // the grid, which is the subject.
+      <div className="w-full px-6 py-6">
         <TimezoneSync current={tz} resolved />
 
         <div className="mb-4 flex items-center gap-1.5">
@@ -163,221 +182,252 @@ export default async function WeekPage({
           <h2 className="ml-1.5 text-base font-medium tabular-nums">{rangeLabel}</h2>
         </div>
 
-        <MetricHeader
-          label={`Follow-through · ${rangeLabel}`}
-          ft={ft}
-          compare={prevFt.ratio !== null ? prevFt : undefined}
-          compareLabel="last week"
-        />
-
-        {needsReconnect && <ReconnectBanner what="this week" />}
-        {loadError && <LoadErrorBanner message={loadError} />}
-
-        {!needsReconnect && !loadError && grid.length === 0 && (
-          <div className="ds-card ds-card--bordered mb-6">
-            <p className="text-base text-[var(--text-color-kumo-subtle)]">
-              Nothing blocked this week.
-            </p>
-          </div>
-        )}
-
         {/*
-         * Rows are things; columns are days. "63% this week" tells you nothing you can act
-         * on — a row reading `Deep work · 2/5` names the culprit.
+         * Two columns, matching the day view — same cap on the main column, same 400px
+         * rail. "Where the hours went" now sits in the same place at every zoom, so
+         * moving day → week → month doesn't move it out from under the cursor.
          *
-         * Blocks and habits share this table because they share the DAY: seeing that
-         * Wednesday sank both is the observation the week view exists for, and it only
-         * lands if the columns line up. What they do NOT share is a verdict. The
-         * follow-through row closes the blocks section rather than sitting in a <tfoot>
-         * under everything, because it counts blocks and nothing else — a total drawn
-         * beneath the habit rows would be claiming to total them. Each section labels
-         * itself for the same reason, which is why the first column has no <th>: it holds
-         * two kinds of thing and naming it once would name the wrong one.
-         *
-         * The whole table renders outside the calendar guards. Habits have no Google event
-         * behind them, so a dead token blanks the blocks section and leaves the rest.
+         * It reads as a different QUESTION from the grid beside it, which is what makes
+         * the split work: the grid is keyed by title and asks which block you dropped;
+         * this is keyed by colour and asks where the time went. Stacked, they invited a
+         * row-to-row comparison that never corresponded.
          */}
-        {(grid.length > 0 || hasHabits) && (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="pb-2.5 pl-0.5" />
-                  {weekDates.map((date) => (
-                    <th
-                      key={date}
-                      className="px-1 pb-2.5 text-center text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]"
-                    >
-                      {fmtWeekday(date)}
-                      <span className="block text-[10px] font-normal tabular-nums text-[var(--text-color-kumo-inactive)]">
-                        {fmtDayNum(date)}
-                      </span>
-                    </th>
-                  ))}
-                  <th className="pb-2.5 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
-                    Kept
-                  </th>
-                </tr>
-              </thead>
+        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,64rem)_minmax(0,400px)]">
+          <div className="min-w-0">
+            <MetricHeader
+              label={`Follow-through · ${rangeLabel}`}
+              ft={ft}
+              compare={prevFt.ratio !== null ? prevFt : undefined}
+              compareLabel="last week"
+            />
 
-              {grid.length > 0 && (
-                <tbody>
-                  <SectionLabel>Recurring blocks</SectionLabel>
+            {needsReconnect && <ReconnectBanner what="this week" />}
+            {loadError && <LoadErrorBanner message={loadError} />}
 
-                  {grid.map((row) => {
-                    const p = row.scheduled ? Math.round((row.kept / row.scheduled) * 100) : null;
-                    return (
-                      <tr key={row.key}>
-                        <td className="border-t border-[var(--color-kumo-line)] py-1.5 pr-4">
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <span
-                              className="size-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: row.color }}
-                              aria-hidden
-                            />
-                            <span className="truncate text-base font-medium">{row.title}</span>
-                          </div>
-                        </td>
+            {!needsReconnect && !loadError && grid.length === 0 && (
+              <div className="ds-card ds-card--bordered mb-6">
+                <p className="text-base text-[var(--text-color-kumo-subtle)]">
+                  Nothing blocked this week.
+                </p>
+              </div>
+            )}
 
-                        {row.cells.map((cell, i) => (
-                          <td
-                            key={weekDates[i]}
-                            className="border-t border-[var(--color-kumo-line)] px-1 py-1.5"
-                          >
-                            <Mark
-                              status={cell}
-                              title={`${row.title} · ${fmtWeekday(weekDates[i])}`}
-                            />
-                          </td>
-                        ))}
-
-                        <td className="whitespace-nowrap border-t border-[var(--color-kumo-line)] py-1.5 text-right">
-                          <span className="mr-2 text-sm tabular-nums text-[var(--text-color-kumo-inactive)]">
-                            {row.kept}/{row.scheduled}
-                          </span>
-                          <span
-                            className={
-                              "font-mono text-sm font-semibold tabular-nums " +
-                              (p !== null && p < 60
-                                ? "text-[var(--text-color-kumo-warning)]"
-                                : "")
-                            }
-                          >
-                            {p === null ? "—" : `${p}%`}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {/* Closes the blocks section. It counts hours, and only the rows above
-                      it have any. */}
-                  <tr>
-                    <td className="border-t border-[var(--color-kumo-line)] pt-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
-                      Follow-through
-                    </td>
-                    {perDay.map((d, i) => {
-                      const p = pct(d.ratio);
-                      return (
-                        <td
-                          key={weekDates[i]}
-                          className="border-t border-[var(--color-kumo-line)] pt-3 text-center font-mono text-base font-semibold tabular-nums"
+            {/*
+             * Rows are things; columns are days. "63% this week" tells you nothing you can act
+             * on — a row reading `Deep work · 2/5` names the culprit.
+             *
+             * Blocks and habits share this table because they share the DAY: seeing that
+             * Wednesday sank both is the observation the week view exists for, and it only
+             * lands if the columns line up. What they do NOT share is a verdict. The
+             * follow-through row closes the blocks section rather than sitting in a <tfoot>
+             * under everything, because it counts blocks and nothing else — a total drawn
+             * beneath the habit rows would be claiming to total them. Each section labels
+             * itself for the same reason, which is why the first column has no <th>: it holds
+             * two kinds of thing and naming it once would name the wrong one.
+             *
+             * The whole table renders outside the calendar guards. Habits have no Google event
+             * behind them, so a dead token blanks the blocks section and leaves the rest.
+             */}
+            {(grid.length > 0 || hasHabits) && (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="pb-2.5 pl-0.5" />
+                      {weekDates.map((date) => (
+                        <th
+                          key={date}
+                          className="px-1 pb-2.5 text-center text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]"
                         >
-                          {p === null ? (
-                            <span className="font-normal text-[var(--text-color-kumo-inactive)]">
-                              —
-                            </span>
-                          ) : (
-                            `${p}%`
-                          )}
+                          {fmtWeekday(date)}
+                          <span className="block text-[10px] font-normal tabular-nums text-[var(--text-color-kumo-inactive)]">
+                            {fmtDayNum(date)}
+                          </span>
+                        </th>
+                      ))}
+                      <th className="pb-2.5 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                        Kept
+                      </th>
+                    </tr>
+                  </thead>
+
+                  {grid.length > 0 && (
+                    <tbody>
+                      <SectionLabel>Recurring blocks</SectionLabel>
+
+                      {grid.map((row) => {
+                        const p = row.scheduled ? Math.round((row.kept / row.scheduled) * 100) : null;
+                        return (
+                          <tr key={row.key}>
+                            <td className="border-t border-[var(--color-kumo-line)] py-1.5 pr-4">
+                              <div className="flex min-w-0 items-center gap-2.5">
+                                <span
+                                  className="size-2 shrink-0 rounded-full"
+                                  style={{ backgroundColor: row.color }}
+                                  aria-hidden
+                                />
+                                <span className="truncate text-base font-medium">{row.title}</span>
+                              </div>
+                            </td>
+
+                            {row.cells.map((cell, i) => (
+                              <td
+                                key={weekDates[i]}
+                                className="border-t border-[var(--color-kumo-line)] px-1 py-1.5"
+                              >
+                                <Mark
+                                  status={cell}
+                                  title={`${row.title} · ${fmtWeekday(weekDates[i])}`}
+                                />
+                              </td>
+                            ))}
+
+                            <td className="whitespace-nowrap border-t border-[var(--color-kumo-line)] py-1.5 text-right">
+                              <span className="mr-2 text-sm tabular-nums text-[var(--text-color-kumo-inactive)]">
+                                {row.kept}/{row.scheduled}
+                              </span>
+                              <span
+                                className={
+                                  "font-mono text-sm font-semibold tabular-nums " +
+                                  (p !== null && p < 60
+                                    ? "text-[var(--text-color-kumo-warning)]"
+                                    : "")
+                                }
+                              >
+                                {p === null ? "—" : `${p}%`}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {/* Closes the blocks section. It counts hours, and only the rows above
+                          it have any. */}
+                      <tr>
+                        <td className="border-t border-[var(--color-kumo-line)] pt-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                          Follow-through
                         </td>
-                      );
-                    })}
-                    <td className="border-t border-[var(--color-kumo-line)]" />
-                  </tr>
-                </tbody>
-              )}
+                        {perDay.map((d, i) => {
+                          const p = pct(d.ratio);
+                          return (
+                            <td
+                              key={weekDates[i]}
+                              className="border-t border-[var(--color-kumo-line)] pt-3 text-center font-mono text-base font-semibold tabular-nums"
+                            >
+                              {p === null ? (
+                                <span className="font-normal text-[var(--text-color-kumo-inactive)]">
+                                  —
+                                </span>
+                              ) : (
+                                `${p}%`
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="border-t border-[var(--color-kumo-line)]" />
+                      </tr>
+                    </tbody>
+                  )}
 
-              {hasHabits && (
-                <tbody>
-                  <SectionLabel spaced={grid.length > 0}>Habits</SectionLabel>
+                  {hasHabits && (
+                    <tbody>
+                      <SectionLabel spaced={grid.length > 0}>Habits</SectionLabel>
 
-                  {habitWeek.daily.map((row) => (
-                    <tr key={row.habit.id}>
-                      <HabitName habit={row.habit} />
+                      {habitWeek.daily.map((row) => (
+                        <tr key={row.habit.id}>
+                          <HabitName habit={row.habit} />
 
-                      {row.cells.map((cell) =>
-                        cell.status === null ? (
-                          // Not a mark — ground. The dash already means "no verdict" twice
-                          // over (not scheduled, not yet); a third meaning on the same eight
-                          // pixels and the vocabulary stops being one. So the row simply
-                          // starts where the habit started, and the days before it are
-                          // outside the record rather than inside it and blank.
-                          <td
-                            key={cell.date}
-                            className="border-t border-[var(--color-kumo-line)] bg-[var(--color-kumo-recessed)] px-1 py-1.5"
-                            // A recessed cell is one of three "nothing promised" facts, and
-                            // they are not the same: not yet declared, paused (archived), or
-                            // an off weekday. If the habit was alive that day it must be the
-                            // schedule; otherwise it's the lifespan, before or in a gap.
-                            title={`${row.habit.name} · ${
-                              isLive(row.habit, cell.date)
-                                ? "not scheduled"
-                                : cell.date < row.habit.created_on
-                                  ? "didn't exist yet"
-                                  : "paused"
-                            }`}
-                          >
-                            <span className="block size-6" />
+                          {row.cells.map((cell) =>
+                            cell.status === null ? (
+                              // Not a mark — ground. The dash already means "no verdict" twice
+                              // over (not scheduled, not yet); a third meaning on the same eight
+                              // pixels and the vocabulary stops being one. So the row simply
+                              // starts where the habit started, and the days before it are
+                              // outside the record rather than inside it and blank.
+                              <td
+                                key={cell.date}
+                                className="border-t border-[var(--color-kumo-line)] bg-[var(--color-kumo-recessed)] px-1 py-1.5"
+                                // A recessed cell is one of three "nothing promised" facts, and
+                                // they are not the same: not yet declared, paused (archived), or
+                                // an off weekday. If the habit was alive that day it must be the
+                                // schedule; otherwise it's the lifespan, before or in a gap.
+                                title={`${row.habit.name} · ${
+                                  isLive(row.habit, cell.date)
+                                    ? "not scheduled"
+                                    : cell.date < row.habit.created_on
+                                      ? "didn't exist yet"
+                                      : "paused"
+                                }`}
+                              >
+                                <span className="block size-6" />
+                              </td>
+                            ) : (
+                              <td
+                                key={cell.date}
+                                className="border-t border-[var(--color-kumo-line)] px-1 py-1.5"
+                              >
+                                <HabitMark cell={cell} habit={row.habit} />
+                              </td>
+                            ),
+                          )}
+
+                          {/* The fraction, and only the fraction. The blocks above print a
+                              percentage beside theirs; a habit never can — follow-through is a
+                              percentage backed by hours and this is a count of things, and two
+                              numbers of visibly different kinds must not be misread as one. The
+                              gap where the percentage would go is that rule, left visible. */}
+                          <td className="whitespace-nowrap border-t border-[var(--color-kumo-line)] py-1.5 text-right">
+                            <span className="text-sm tabular-nums text-[var(--text-color-kumo-inactive)]">
+                              {row.scored === 0 ? "—" : `${row.kept}/${row.scored}`}
+                            </span>
                           </td>
-                        ) : (
-                          <td
-                            key={cell.date}
-                            className="border-t border-[var(--color-kumo-line)] px-1 py-1.5"
-                          >
-                            <HabitMark cell={cell} habit={row.habit} />
-                          </td>
-                        ),
-                      )}
+                        </tr>
+                      ))}
 
-                      {/* The fraction, and only the fraction. The blocks above print a
-                          percentage beside theirs; a habit never can — follow-through is a
-                          percentage backed by hours and this is a count of things, and two
-                          numbers of visibly different kinds must not be misread as one. The
-                          gap where the percentage would go is that rule, left visible. */}
-                      <td className="whitespace-nowrap border-t border-[var(--color-kumo-line)] py-1.5 text-right">
-                        <span className="text-sm tabular-nums text-[var(--text-color-kumo-inactive)]">
-                          {row.scored === 0 ? "—" : `${row.kept}/${row.scored}`}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                      {habitWeek.weekly.map((row) => (
+                        <tr key={row.habit.id}>
+                          <HabitName habit={row.habit} />
+                          <WeekBand row={row} />
+                        </tr>
+                      ))}
+                    </tbody>
+                  )}
+                </table>
+              </div>
+            )}
 
-                  {habitWeek.weekly.map((row) => (
-                    <tr key={row.habit.id}>
-                      <HabitName habit={row.habit} />
-                      <WeekBand row={row} />
-                    </tr>
-                  ))}
-                </tbody>
-              )}
-            </table>
+            <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+              A day with nothing blocked scores <strong className="font-semibold">—</strong>, not 0%. A
+              rest day is not a failure.
+            </p>
+
+            {hasHabits && (
+              <p className="mt-1.5 text-sm text-[var(--text-color-kumo-inactive)]">
+                Habits aren&apos;t counted in follow-through — they have no hours to weigh. A
+                weekly habit spans the week because the week is what it&apos;s judged on: it was
+                never missed on a Tuesday. A shaded day is one you hadn&apos;t declared the habit
+                for, or had already archived it — blank, not missed.
+              </p>
+            )}
           </div>
-        )}
 
-        <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
-          A day with nothing blocked scores <strong className="font-semibold">—</strong>, not 0%. A
-          rest day is not a failure.
-        </p>
-
-        {hasHabits && (
-          <p className="mt-1.5 text-sm text-[var(--text-color-kumo-inactive)]">
-            Habits aren&apos;t counted in follow-through — they have no hours to weigh. A
-            weekly habit spans the week because the week is what it&apos;s judged on: it was
-            never missed on a Tuesday. A shaded day is one you hadn&apos;t declared the habit
-            for, or had already archived it — blank, not missed.
-          </p>
-        )}
+          {/* Inside the calendar guards: a category is a naming of a Google colour, so
+              with no calendar there is nothing to group, and an empty table would read
+              as "you did nothing" rather than "we couldn't look". */}
+          <aside className="min-w-0">
+            {!needsReconnect && !loadError && (
+              <section>
+                <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+                  Where the hours went
+                </h3>
+                <CategoryRollupTable
+                  rows={categoryRows}
+                  emptyHint={categories.length === 0}
+                />
+              </section>
+            )}
+          </aside>
+        </div>
       </div>
   );
 }

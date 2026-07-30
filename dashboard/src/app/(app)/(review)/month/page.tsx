@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getUser } from "@/lib/supabase/user";
+import { getGoogleRefreshToken } from "@/lib/supabase/google-credentials";
 import { listCalendarEventsForMonths, GoogleAuthExpiredError } from "@/lib/google/calendar";
 import {
   reconstructRange,
@@ -19,6 +20,8 @@ import {
 } from "@/lib/activity/metrics";
 import { habitsOverRange, type HabitRollup } from "@/lib/habits/metrics";
 import { HABIT_COLS, ENTRY_COLS, toHabit, toEntry } from "@/lib/habits/rows";
+import { categoriesOverRange } from "@/lib/categories/metrics";
+import { CATEGORY_COLS, toCategory } from "@/lib/categories/rows";
 import {
   resolveViewerTimeZone,
   dateStringInTz,
@@ -31,6 +34,7 @@ import {
 import type { ActivityLog } from "@/lib/types";
 import { TimezoneSync } from "../../../timezone-sync";
 import { MetricHeader } from "../../../metric-header";
+import { CategoryRollupTable } from "../../../category-rollup";
 import { ReconnectBanner, LoadErrorBanner } from "../../../banners";
 
 // The ledger is read per request and never cached. The CALENDAR is cached for 5 minutes
@@ -79,10 +83,16 @@ export default async function MonthPage({
   // Auth and both queries in parallel — RLS scopes each table to its owner, so neither
   // query has to wait for the user id.
   const supabase = await createClient();
-  const [user, { data: cred }, { data: logData }, { data: habitData }, { data: entryData }] =
-    await Promise.all([
+  const [
+    user,
+    refreshToken,
+    { data: logData },
+    { data: habitData },
+    { data: entryData },
+    { data: categoryData },
+  ] = await Promise.all([
       getUser(),
-      supabase.from("google_credentials").select("refresh_token").maybeSingle(),
+      getGoogleRefreshToken(),
       supabase
         .from("activity_logs")
         .select(
@@ -100,6 +110,8 @@ export default async function MonthPage({
         .select(ENTRY_COLS)
         .gte("occurred_on", first)
         .lte("occurred_on", entryTo),
+      // Eleven rows at most, and no date filter — a category is a naming, not an event.
+      supabase.from("event_categories").select(CATEGORY_COLS).order("color_id"),
     ]);
   if (!user) redirect("/login");
 
@@ -115,15 +127,15 @@ export default async function MonthPage({
   const logs = (logData ?? []) as ActivityLog[];
 
   let all: ReconstructedDay[] = [];
-  let needsReconnect = !cred?.refresh_token;
+  let needsReconnect = !refreshToken;
   let loadError: string | null = null;
 
-  if (cred?.refresh_token) {
+  if (refreshToken) {
     try {
       // Exactly the two months this view needs — and they're the same cache entries the
       // day and week views fill, so switching zoom inside a month costs Google nothing.
       const events = await listCalendarEventsForMonths(
-        cred.refresh_token,
+        refreshToken,
         monthsSpanned(dates),
         (m) => monthBounds(m, tz),
       );
@@ -147,6 +159,9 @@ export default async function MonthPage({
   const blockedDays = perDay.filter((d) => d.ft.plannedMin > 0).length;
   const best = bestStreak(blocks);
 
+  const categories = (categoryData ?? []).map(toCategory);
+  const categoryRows = categoriesOverRange(month, categories);
+
   const monthLabel = new Date(`${first}T12:00:00Z`).toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
@@ -158,7 +173,10 @@ export default async function MonthPage({
   });
 
   return (
-      <div className="w-full max-w-5xl px-6 py-6">
+      // No max-width on the page: the cap lives on the COLUMNS instead, as on the day
+      // and week views — capping here and then carving a rail out of it would take the
+      // width from the content, which is the subject.
+      <div className="w-full px-6 py-6">
         <TimezoneSync current={tz} resolved />
 
         <div className="mb-4 flex items-center gap-1.5">
@@ -179,184 +197,211 @@ export default async function MonthPage({
           <h2 className="ml-1.5 text-base font-medium">{monthLabel}</h2>
         </div>
 
-        <MetricHeader
-          label={`Follow-through · ${monthLabel}`}
-          ft={ft}
-          compare={prevFt.ratio !== null ? prevFt : undefined}
-          compareLabel={prevLabel}
-        />
+        {/*
+         * Two columns, matching the day and week views — same cap on the main column,
+         * same 400px rail, so "Where the hours went" sits in the same place at every
+         * zoom. Habits stay in the LEFT column here rather than joining it: that table
+         * is three columns wide and would be cramped into illegibility by the rail.
+         */}
+        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,64rem)_minmax(0,400px)]">
+          <div className="min-w-0">
+            <MetricHeader
+              label={`Follow-through · ${monthLabel}`}
+              ft={ft}
+              compare={prevFt.ratio !== null ? prevFt : undefined}
+              compareLabel={prevLabel}
+            />
 
-        {needsReconnect && <ReconnectBanner what="this month" />}
-        {loadError && <LoadErrorBanner message={loadError} />}
+            {needsReconnect && <ReconnectBanner what="this month" />}
+            {loadError && <LoadErrorBanner message={loadError} />}
 
-        {!needsReconnect && !loadError && (
-          <div className="grid gap-8 lg:grid-cols-[360px_1fr]">
-            {/* Every day, at a glance. */}
-            <section>
-              <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
-                Every day, by follow-through
-              </h3>
-              <Heatmap first={first} perDay={perDay} today={today} />
-              <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
-                Hollow = nothing blocked. Darker = more of what you planned, you kept.
-              </p>
-              <dl className="mt-4 flex gap-6">
-                <div>
-                  <dd className="text-xl font-semibold tabular-nums">{best}</dd>
-                  <dt className="text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
-                    Best streak
-                  </dt>
-                </div>
-                <div>
-                  <dd className="text-xl font-semibold tabular-nums">{blockedDays}</dd>
-                  <dt className="text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
-                    Days blocked
-                  </dt>
-                </div>
-              </dl>
-            </section>
-
-            {/* Worst first — the block you keep dropping is the one to see. */}
-            <section>
-              <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
-                Recurring blocks · worst first
-              </h3>
-              {blocks.length === 0 ? (
-                <div className="ds-card ds-card--bordered">
-                  <p className="text-base text-[var(--text-color-kumo-subtle)]">
-                    Nothing blocked this month.
+            {!needsReconnect && !loadError && (
+              <div className="grid gap-8 lg:grid-cols-[360px_1fr]">
+                {/* Every day, at a glance. */}
+                <section>
+                  <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+                    Every day, by follow-through
+                  </h3>
+                  <Heatmap first={first} perDay={perDay} today={today} />
+                  <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+                    Hollow = nothing blocked. Darker = more of what you planned, you kept.
                   </p>
-                </div>
-              ) : (
+                  <dl className="mt-4 flex gap-6">
+                    <div>
+                      <dd className="text-xl font-semibold tabular-nums">{best}</dd>
+                      <dt className="text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                        Best streak
+                      </dt>
+                    </div>
+                    <div>
+                      <dd className="text-xl font-semibold tabular-nums">{blockedDays}</dd>
+                      <dt className="text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                        Days blocked
+                      </dt>
+                    </div>
+                  </dl>
+                </section>
+
+                {/* Worst first — the block you keep dropping is the one to see. */}
+                <section>
+                  <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+                    Recurring blocks · worst first
+                  </h3>
+                  {blocks.length === 0 ? (
+                    <div className="ds-card ds-card--bordered">
+                      <p className="text-base text-[var(--text-color-kumo-subtle)]">
+                        Nothing blocked this month.
+                      </p>
+                    </div>
+                  ) : (
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr>
+                          <th className="border-b border-[var(--color-kumo-line)] pb-2 pr-2.5 text-left text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                            Block
+                          </th>
+                          <th className="border-b border-[var(--color-kumo-line)] pb-2 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                            Kept
+                          </th>
+                          <th className="border-b border-[var(--color-kumo-line)] pb-2 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                            Follow-through
+                          </th>
+                          <th className="border-b border-[var(--color-kumo-line)] pb-2 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                            Streak
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {blocks.map((h) => {
+                          const p = Math.round(h.ratio * 100);
+                          const bad = p < 60;
+                          return (
+                            <tr key={h.key}>
+                              <td className="border-b border-[var(--color-kumo-line)] py-2.5 pr-2.5">
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                  <span
+                                    className="size-2 shrink-0 rounded-full"
+                                    style={{ backgroundColor: h.color }}
+                                    aria-hidden
+                                  />
+                                  <span className="truncate text-base">{h.title}</span>
+                                </div>
+                              </td>
+                              <td className="border-b border-[var(--color-kumo-line)] py-2.5 text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
+                                {h.kept}/{h.scheduled}
+                              </td>
+                              <td className="whitespace-nowrap border-b border-[var(--color-kumo-line)] py-2.5 text-right">
+                                <span className="mr-2 inline-block h-1 w-20 overflow-hidden rounded-full bg-[var(--color-kumo-fill)] align-middle">
+                                  <span
+                                    className="block h-full rounded-full"
+                                    style={{
+                                      width: `${p}%`,
+                                      backgroundColor: bad
+                                        ? "var(--color-kumo-warning)"
+                                        : "var(--color-kumo-success)",
+                                    }}
+                                  />
+                                </span>
+                                <span
+                                  className={
+                                    "font-mono text-sm font-semibold tabular-nums " +
+                                    (bad ? "text-[var(--text-color-kumo-warning)]" : "")
+                                  }
+                                >
+                                  {p}%
+                                </span>
+                              </td>
+                              <td className="border-b border-[var(--color-kumo-line)] py-2.5 text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
+                                {h.streak ? `${h.streak}d` : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                  <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+                    Grouped by title — a recurring identity already in your data.
+                  </p>
+                </section>
+              </div>
+            )}
+
+            {/*
+             * Outside the guards above, deliberately: a habit has no Google event behind it, so
+             * a dead token blanks the blocks and leaves this standing.
+             *
+             * No per-day strip here, and no second heatmap. The month already decided a
+             * thing × day grid is the wrong zoom — that's what /week is for — and a habits
+             * heatmap beside a follow-through heatmap would be two identical green ramps
+             * meaning two incomparable things, which is the exact misreading habit-list.tsx
+             * exists to refuse. A month asks which habit you are dropping. This answers that.
+             */}
+            {habitRows.length > 0 && (
+              <section className="mt-8">
+                <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+                  Habits · worst first
+                </h3>
+
+                {/* No bar in this table, and the empty space is the point. A bar whose length
+                    is kept ÷ judged IS a percentage, drawn — and it would sit inches below a
+                    bar whose length is hours kept ÷ hours planned, inviting exactly the
+                    length-to-length comparison that means nothing. The ratio orders these rows
+                    and colours the bad ones. It is never printed and never drawn. */}
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className="border-b border-[var(--color-kumo-line)] pb-2 pr-2.5 text-left text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
-                        Block
-                      </th>
-                      <th className="border-b border-[var(--color-kumo-line)] pb-2 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
-                        Kept
-                      </th>
-                      <th className="border-b border-[var(--color-kumo-line)] pb-2 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
-                        Follow-through
-                      </th>
-                      <th className="border-b border-[var(--color-kumo-line)] pb-2 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
-                        Streak
-                      </th>
+                      {/* No Target column, deliberately. The habit row carries the goal you
+                          hold NOW, while Kept beside it was judged against the goal frozen on
+                          each entry — so a June row judged at 50 reps would sit under a header
+                          reading 100 and claim you hit it 23 times. The target you are chasing
+                          lives on /habits; this table answers which habit you are dropping. */}
+                      {["Habit", "Kept", "Streak"].map((h, i) => (
+                        <th
+                          key={h}
+                          className={
+                            "border-b border-[var(--color-kumo-line)] pb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)] " +
+                            (i === 0 ? "pr-2.5 text-left" : "text-right")
+                          }
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {blocks.map((h) => {
-                      const p = Math.round(h.ratio * 100);
-                      const bad = p < 60;
-                      return (
-                        <tr key={h.key}>
-                          <td className="border-b border-[var(--color-kumo-line)] py-2.5 pr-2.5">
-                            <div className="flex min-w-0 items-center gap-2.5">
-                              <span
-                                className="size-2 shrink-0 rounded-full"
-                                style={{ backgroundColor: h.color }}
-                                aria-hidden
-                              />
-                              <span className="truncate text-base">{h.title}</span>
-                            </div>
-                          </td>
-                          <td className="border-b border-[var(--color-kumo-line)] py-2.5 text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
-                            {h.kept}/{h.scheduled}
-                          </td>
-                          <td className="whitespace-nowrap border-b border-[var(--color-kumo-line)] py-2.5 text-right">
-                            <span className="mr-2 inline-block h-1 w-20 overflow-hidden rounded-full bg-[var(--color-kumo-fill)] align-middle">
-                              <span
-                                className="block h-full rounded-full"
-                                style={{
-                                  width: `${p}%`,
-                                  backgroundColor: bad
-                                    ? "var(--color-kumo-warning)"
-                                    : "var(--color-kumo-success)",
-                                }}
-                              />
-                            </span>
-                            <span
-                              className={
-                                "font-mono text-sm font-semibold tabular-nums " +
-                                (bad ? "text-[var(--text-color-kumo-warning)]" : "")
-                              }
-                            >
-                              {p}%
-                            </span>
-                          </td>
-                          <td className="border-b border-[var(--color-kumo-line)] py-2.5 text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
-                            {h.streak ? `${h.streak}d` : "—"}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {habitRows.map((row) => (
+                      <HabitRollupRow key={row.habit.id} row={row} />
+                    ))}
                   </tbody>
                 </table>
-              )}
-              <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
-                Grouped by title — a recurring identity already in your data.
-              </p>
-            </section>
+
+                <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+                  Declared, not derived — a habit is here because you said so. Judged from the
+                  day you made it: one added on the 8th is scored on 24 days, not 31. Not
+                  counted in follow-through — habits have no hours to weigh.
+                </p>
+              </section>
+            )}
           </div>
-        )}
 
-        {/*
-         * Outside the guards above, deliberately: a habit has no Google event behind it, so
-         * a dead token blanks the blocks and leaves this standing.
-         *
-         * No per-day strip here, and no second heatmap. The month already decided a
-         * thing × day grid is the wrong zoom — that's what /week is for — and a habits
-         * heatmap beside a follow-through heatmap would be two identical green ramps
-         * meaning two incomparable things, which is the exact misreading habit-list.tsx
-         * exists to refuse. A month asks which habit you are dropping. This answers that.
-         */}
-        {habitRows.length > 0 && (
-          <section className="mt-8">
-            <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
-              Habits · worst first
-            </h3>
-
-            {/* No bar in this table, and the empty space is the point. A bar whose length
-                is kept ÷ judged IS a percentage, drawn — and it would sit inches below a
-                bar whose length is hours kept ÷ hours planned, inviting exactly the
-                length-to-length comparison that means nothing. The ratio orders these rows
-                and colours the bad ones. It is never printed and never drawn. */}
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  {/* No Target column, deliberately. The habit row carries the goal you
-                      hold NOW, while Kept beside it was judged against the goal frozen on
-                      each entry — so a June row judged at 50 reps would sit under a header
-                      reading 100 and claim you hit it 23 times. The target you are chasing
-                      lives on /habits; this table answers which habit you are dropping. */}
-                  {["Habit", "Kept", "Streak"].map((h, i) => (
-                    <th
-                      key={h}
-                      className={
-                        "border-b border-[var(--color-kumo-line)] pb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)] " +
-                        (i === 0 ? "pr-2.5 text-left" : "text-right")
-                      }
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {habitRows.map((row) => (
-                  <HabitRollupRow key={row.habit.id} row={row} />
-                ))}
-              </tbody>
-            </table>
-
-            <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
-              Declared, not derived — a habit is here because you said so. Judged from the
-              day you made it: one added on the 8th is scored on 24 days, not 31. Not
-              counted in follow-through — habits have no hours to weigh.
-            </p>
-          </section>
-        )}
+          {/* Inside the calendar guards: a category is a naming of a Google colour, so
+              with no calendar there is nothing to group, and an empty table would read
+              as "you did nothing" rather than "we couldn't look". */}
+          <aside className="min-w-0">
+            {!needsReconnect && !loadError && (
+              <section>
+                <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+                  Where the hours went
+                </h3>
+                <CategoryRollupTable
+                  rows={categoryRows}
+                  emptyHint={categories.length === 0}
+                />
+              </section>
+            )}
+          </aside>
+        </div>
       </div>
   );
 }

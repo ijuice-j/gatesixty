@@ -1,28 +1,33 @@
-"use client";
+import { GoogleSignIn } from "./google-signin";
 
-import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+/**
+ * A SERVER component now, so it can read the query string.
+ *
+ * The sign-in round trip has two failure points that both land back here, and neither
+ * said anything before: `/auth/callback` redirects to `?error=auth` when the code
+ * exchange fails, and Supabase itself can bounce back with `?error=…&error_description=…`
+ * when the provider rejects the request. Both used to render as a pristine login page,
+ * which is indistinguishable from a fresh visit — you click, the browser goes away and
+ * comes back, and nothing has changed or explained itself.
+ *
+ * Reading searchParams makes this dynamic rather than static. That is the correct trade:
+ * a page whose content depends on the query string was never really static.
+ */
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; error_description?: string }>;
+}) {
+  const { error, error_description: description } = await searchParams;
 
-export default function LoginPage() {
-  const [loading, setLoading] = useState(false);
-
-  async function signInWithGoogle() {
-    setLoading(true);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        // Same read-only Calendar scope the mobile app uses — the dashboard
-        // needs it to reconstruct "not done" from past calendar events.
-        scopes: "https://www.googleapis.com/auth/calendar.readonly",
-        // access_type=offline + prompt=consent so Google issues a refresh
-        // token we can use for the Calendar API later.
-        queryParams: { access_type: "offline", prompt: "consent" },
-      },
-    });
-    if (error) setLoading(false);
-  }
+  const message =
+    error === "auth"
+      ? "Google signed you in, but we couldn't finish creating your session. Try again — if it keeps happening, the sign-in link may have expired or already been used."
+      : error
+        ? // Supabase's own error, passed straight through. Its description is written for
+          // a person; the code alone ("server_error") is not.
+          (description ?? error).replace(/\+/g, " ")
+        : null;
 
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
@@ -32,15 +37,16 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-[var(--text-color-kumo-subtle)]">
             Review what you actually did.
           </p>
+
+          {message && (
+            <div className="ds-banner ds-banner--danger mt-6 text-left">
+              <div className="ds-banner__content">{message}</div>
+            </div>
+          )}
+
           {/* emphasis = the blue action surface. NOT the Cloudflare orange — that is a
               text-only token (--text-color-kumo-brand) and must never fill a button. */}
-          <button
-            onClick={signInWithGoogle}
-            disabled={loading}
-            className="ds-btn ds-btn--emphasis ds-btn--lg ds-btn--block mt-8"
-          >
-            {loading ? "Redirecting…" : "Continue with Google"}
-          </button>
+          <GoogleSignIn />
         </div>
       </div>
     </main>

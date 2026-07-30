@@ -31,6 +31,17 @@ const NAV = [
       </svg>
     ),
   },
+  {
+    href: "/categories",
+    match: ["/categories"],
+    label: "Categories",
+    icon: (
+      <svg {...ICON} aria-hidden>
+        <circle cx="5.75" cy="5.75" r="2.75" stroke="currentColor" strokeWidth="1.4" />
+        <circle cx="10.25" cy="10.25" r="2.75" stroke="currentColor" strokeWidth="1.4" />
+      </svg>
+    ),
+  },
 ];
 
 /**

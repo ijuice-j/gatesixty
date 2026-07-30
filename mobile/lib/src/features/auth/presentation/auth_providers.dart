@@ -49,7 +49,9 @@ class AuthController extends _$AuthController {
     try {
       await ref.read(googleAuthServiceProvider).connect();
     } on GoogleSignInException {
-      // User cancelled or sign-in failed — stay disconnected.
+      // Still swallowed here — the service has already recorded WHY in
+      // `lastConnectError`, and the onboarding screen reads it when this `state` flips
+      // back to false. Rethrowing would only turn a handled failure into a red screen.
     } finally {
       state = false;
     }
