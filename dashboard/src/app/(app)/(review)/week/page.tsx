@@ -15,6 +15,7 @@ import {
 import { followThrough, totalFollowThrough, weekGrid, pct } from "@/lib/activity/metrics";
 import {
   habitsForWeek,
+  isLive,
   formatProgress,
   trim,
   type HabitCell,
@@ -315,12 +316,16 @@ export default async function WeekPage({
                           <td
                             key={cell.date}
                             className="border-t border-[var(--color-kumo-line)] bg-[var(--color-kumo-recessed)] px-1 py-1.5"
-                            // Both edges of a life land here, and they are not the same
-                            // fact — one end you hadn't declared it, the other you'd
-                            // retired it. Saying "didn't exist yet" on the far side would
-                            // deny a habit you kept for months.
+                            // A recessed cell is one of three "nothing promised" facts, and
+                            // they are not the same: not yet declared, paused (archived), or
+                            // an off weekday. If the habit was alive that day it must be the
+                            // schedule; otherwise it's the lifespan, before or in a gap.
                             title={`${row.habit.name} · ${
-                              cell.date < row.habit.created_on ? "didn't exist yet" : "archived"
+                              isLive(row.habit, cell.date)
+                                ? "not scheduled"
+                                : cell.date < row.habit.created_on
+                                  ? "didn't exist yet"
+                                  : "paused"
                             }`}
                           >
                             <span className="block size-6" />

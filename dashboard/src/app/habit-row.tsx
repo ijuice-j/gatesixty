@@ -1,22 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { trim } from "@/lib/habits/metrics";
+import { trim, formatWeekdays } from "@/lib/habits/metrics";
 import type { Habit } from "@/lib/habits/types";
 import { ColorPicker } from "./habit-colors";
 import { updateHabit, setHabitArchived } from "./habit-actions";
 
-/** "50 reps / day" · "yes or no / day" · "3 / week" · "tracked only" */
+/** "50 reps / day" · "yes or no · Mon Wed Fri" · "3 / week" · "tracked only" */
 function describe(h: Habit): string {
-  const per = `/ ${h.period}`;
+  const per = h.weekdays ? `· ${formatWeekdays(h.weekdays)}` : `/ ${h.period}`;
   if (h.kind === "check") return `yes or no ${per}`;
   if (h.target === null) return "tracked only";
   return `${trim(h.target)}${h.unit ? ` ${h.unit}` : ""} ${per}`;
 }
 
-/** "a number, every day" — what can't be edited, said plainly. */
+/** "a number, every day" · "a number, on Mon Wed Fri" — what can't be edited, said plainly. */
 function measuredAs(h: Habit): string {
-  return `${h.kind === "check" ? "Yes or no" : "A number"}, every ${h.period}`;
+  const what = h.kind === "check" ? "Yes or no" : "A number";
+  return h.weekdays ? `${what}, on ${formatWeekdays(h.weekdays)}` : `${what}, every ${h.period}`;
 }
 
 export function HabitRow({ habit, archived }: { habit: Habit; archived: boolean }) {

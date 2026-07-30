@@ -7,6 +7,7 @@ import {
   isLive,
   scoreDay,
   formatProgress,
+  formatWeekdays,
   type Week,
 } from "./metrics.ts";
 import { weeksOfMonth } from "../time.ts";
@@ -38,6 +39,8 @@ const habit = (over: Partial<Habit> = {}): Habit => {
     // Tracked since forever, so a no-entry day is judged exactly as it was before this
     // column existed. The untracked-then-tracked tests set it explicitly.
     target_effective_since: "2000-01-01",
+    // Every day — the weekday tests set a set explicitly.
+    weekdays: null,
     ...over,
   };
   // One span from created_on/archived_on unless a test declares its own — so every
@@ -442,6 +445,62 @@ await test("a weekly target does not reach into weeks before it took effect", ()
     created_on: "2026-07-01", target_effective_since: "2026-08-01",
   });
   eq(one(g, [], WED, NEXT_MON).status, "untracked", "the week Jul 13–19 had no target yet");
+});
+
+console.log("\nhabits — certain weekdays: off is not missed");
+
+// DATES is Mon..Sun, so weekday indices 0..6 map to its positions. A Mon/Wed/Fri habit
+// is weekdays [0, 2, 4].
+await test("a Mon/Wed/Fri habit is judged M/W/F and off the rest", () => {
+  const mwf = habit({ weekdays: [0, 2, 4] });
+  const w = habitsForWeek([mwf], [], DATES, NEXT_MON);
+  eq(
+    w.daily[0].cells.map((c) => c.status),
+    ["missed", null, "missed", null, "missed", null, null],
+    "scheduled+unlogged+settled = missed; the off weekdays = null, not missed",
+  );
+  eq(w.daily[0].scored, 3, "only the three scheduled days are judged");
+  eq(w.daily[0].kept, 0, "");
+});
+
+await test("an off weekday earns no verdict even long after it settled", () => {
+  const mwf = habit({ weekdays: [0, 2, 4] }); // Tuesday (index 1) is off
+  eq(one(mwf, [], "2026-07-14", "2026-08-01").status, null, "Tuesday was never on the plan");
+});
+
+await test("an off-day habit stays in the day list but out of the day's score", () => {
+  const mwf = habit({ id: "m", weekdays: [0, 2, 4] });
+  const daily = habit({ id: "d" });
+  const rows = habitsForDate(
+    [mwf, daily],
+    [entry({ habit_id: "d", occurred_on: "2026-07-14", value: 50 })],
+    "2026-07-14", // Tuesday
+    "2026-07-14",
+    WEEK,
+  );
+  const m = rows.find((r) => r.habit.id === "m")!;
+  eq(m.scheduled, false, "Tuesday is off for a M/W/F habit");
+  eq(m.status, null, "so it carries no verdict");
+  eq(rows.find((r) => r.habit.id === "d")!.scheduled, true, "the every-day habit is on");
+  eq(scoreDay(rows), { kept: 1, scored: 1 }, "only the scheduled habit counts toward the score");
+});
+
+await test("the month denominator counts only scheduled weekdays", () => {
+  const mwf = habit({ weekdays: [0, 2, 4] });
+  const july = Array.from({ length: 31 }, (_, i) => `2026-07-${String(i + 1).padStart(2, "0")}`);
+  const rows = habitsOverRange([mwf], [], july, [], "2026-08-10");
+  eq(rows[0].judged, 14, "M/W/F in July 2026 — 4 Mondays + 5 Wednesdays + 5 Fridays");
+  eq(rows[0].kept, 0, "none logged");
+});
+
+await test("weekdays null is exactly a plain daily habit", () => {
+  const everyDay = habit({ weekdays: null });
+  const w = habitsForWeek([everyDay], [], DATES, NEXT_MON);
+  eq(w.daily[0].scored, 7, "every one of the seven days is judged");
+});
+
+await test("formatWeekdays lists the days Mon-first", () => {
+  eq(formatWeekdays([4, 0, 2]), "Mon Wed Fri", "sorted into week order");
 });
 
 console.log("\ntime — a week belongs to the month its Monday falls in");
