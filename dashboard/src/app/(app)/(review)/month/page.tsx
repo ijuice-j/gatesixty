@@ -51,7 +51,7 @@ export default async function MonthPage({
 
   if (!resolved) {
     return (
-        <div className="w-full max-w-5xl px-6 py-6">
+        <div className="mx-auto w-full max-w-[97rem] px-6 py-8 sm:px-8 lg:px-10 lg:py-10">
           <TimezoneSync current={tz} resolved={false} />
           <p className="text-base text-[var(--text-color-kumo-subtle)]">Loading your month…</p>
         </div>
@@ -173,13 +173,12 @@ export default async function MonthPage({
   });
 
   return (
-      // No max-width on the page: the cap lives on the COLUMNS instead, as on the day
-      // and week views — capping here and then carving a rail out of it would take the
-      // width from the content, which is the subject.
-      <div className="w-full px-6 py-6">
+      // The width cap lives on the COLUMNS, as on the day and week views; the outer cap
+      // equals the columns plus gap and gutters, so it only centers on a wide screen.
+      <div className="mx-auto w-full max-w-[97rem] px-6 py-8 sm:px-8 lg:px-10 lg:py-10">
         <TimezoneSync current={tz} resolved />
 
-        <div className="mb-4 flex items-center gap-1.5">
+        <div className="mb-8 flex items-center gap-2">
           <Link
             href={`/month?date=${prevFirst}`}
             className="ds-btn ds-btn--secondary ds-btn--sm"
@@ -194,7 +193,7 @@ export default async function MonthPage({
           >
             ›
           </Link>
-          <h2 className="ml-1.5 text-base font-medium">{monthLabel}</h2>
+          <h2 className="ml-2 text-lg font-semibold">{monthLabel}</h2>
         </div>
 
         {/*
@@ -203,7 +202,7 @@ export default async function MonthPage({
          * zoom. Habits stay in the LEFT column here rather than joining it: that table
          * is three columns wide and would be cramped into illegibility by the rail.
          */}
-        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,64rem)_minmax(0,400px)]">
+        <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,64rem)_minmax(0,400px)] xl:gap-12">
           <div className="min-w-0">
             <MetricHeader
               label={`Follow-through · ${monthLabel}`}
@@ -216,17 +215,17 @@ export default async function MonthPage({
             {loadError && <LoadErrorBanner message={loadError} />}
 
             {!needsReconnect && !loadError && (
-              <div className="grid gap-8 lg:grid-cols-[360px_1fr]">
+              <div className="grid gap-10 lg:grid-cols-[380px_1fr]">
                 {/* Every day, at a glance. */}
                 <section>
-                  <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+                  <h3 className="mb-3.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
                     Every day, by follow-through
                   </h3>
                   <Heatmap first={first} perDay={perDay} today={today} />
-                  <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+                  <p className="mt-4 text-sm text-[var(--text-color-kumo-inactive)]">
                     Hollow = nothing blocked. Darker = more of what you planned, you kept.
                   </p>
-                  <dl className="mt-4 flex gap-6">
+                  <dl className="mt-6 flex gap-8">
                     <div>
                       <dd className="text-xl font-semibold tabular-nums">{best}</dd>
                       <dt className="text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
@@ -244,7 +243,7 @@ export default async function MonthPage({
 
                 {/* Worst first — the block you keep dropping is the one to see. */}
                 <section>
-                  <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+                  <h3 className="mb-3.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
                     Recurring blocks · worst first
                   </h3>
                   {blocks.length === 0 ? (
@@ -257,16 +256,16 @@ export default async function MonthPage({
                     <table className="w-full border-collapse">
                       <thead>
                         <tr>
-                          <th className="border-b border-[var(--color-kumo-line)] pb-2 pr-2.5 text-left text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                          <th className="border-b border-[var(--color-kumo-line)] pb-3 pr-3 text-left text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
                             Block
                           </th>
-                          <th className="border-b border-[var(--color-kumo-line)] pb-2 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                          <th className="border-b border-[var(--color-kumo-line)] pb-3 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
                             Kept
                           </th>
-                          <th className="border-b border-[var(--color-kumo-line)] pb-2 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                          <th className="border-b border-[var(--color-kumo-line)] pb-3 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
                             Follow-through
                           </th>
-                          <th className="border-b border-[var(--color-kumo-line)] pb-2 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                          <th className="border-b border-[var(--color-kumo-line)] pb-3 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
                             Streak
                           </th>
                         </tr>
@@ -277,21 +276,21 @@ export default async function MonthPage({
                           const bad = p < 60;
                           return (
                             <tr key={h.key}>
-                              <td className="border-b border-[var(--color-kumo-line)] py-2.5 pr-2.5">
-                                <div className="flex min-w-0 items-center gap-2.5">
+                              <td className="border-b border-[var(--color-kumo-line)] py-3.5 pr-2.5">
+                                <div className="flex min-w-0 items-center gap-3">
                                   <span
-                                    className="size-2 shrink-0 rounded-full"
+                                    className="size-2.5 shrink-0 rounded-full"
                                     style={{ backgroundColor: h.color }}
                                     aria-hidden
                                   />
                                   <span className="truncate text-base">{h.title}</span>
                                 </div>
                               </td>
-                              <td className="border-b border-[var(--color-kumo-line)] py-2.5 text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
+                              <td className="border-b border-[var(--color-kumo-line)] py-3.5 text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
                                 {h.kept}/{h.scheduled}
                               </td>
-                              <td className="whitespace-nowrap border-b border-[var(--color-kumo-line)] py-2.5 text-right">
-                                <span className="mr-2 inline-block h-1 w-20 overflow-hidden rounded-full bg-[var(--color-kumo-fill)] align-middle">
+                              <td className="whitespace-nowrap border-b border-[var(--color-kumo-line)] py-3.5 text-right">
+                                <span className="mr-2.5 inline-block h-1.5 w-24 overflow-hidden rounded-full bg-[var(--color-kumo-fill)] align-middle">
                                   <span
                                     className="block h-full rounded-full"
                                     style={{
@@ -311,7 +310,7 @@ export default async function MonthPage({
                                   {p}%
                                 </span>
                               </td>
-                              <td className="border-b border-[var(--color-kumo-line)] py-2.5 text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
+                              <td className="border-b border-[var(--color-kumo-line)] py-3.5 text-right text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
                                 {h.streak ? `${h.streak}d` : "—"}
                               </td>
                             </tr>
@@ -320,7 +319,7 @@ export default async function MonthPage({
                       </tbody>
                     </table>
                   )}
-                  <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+                  <p className="mt-4 text-sm text-[var(--text-color-kumo-inactive)]">
                     Grouped by title — a recurring identity already in your data.
                   </p>
                 </section>
@@ -338,8 +337,8 @@ export default async function MonthPage({
              * exists to refuse. A month asks which habit you are dropping. This answers that.
              */}
             {habitRows.length > 0 && (
-              <section className="mt-8">
-                <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+              <section className="mt-12">
+                <h3 className="mb-3.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
                   Habits · worst first
                 </h3>
 
@@ -360,8 +359,8 @@ export default async function MonthPage({
                         <th
                           key={h}
                           className={
-                            "border-b border-[var(--color-kumo-line)] pb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)] " +
-                            (i === 0 ? "pr-2.5 text-left" : "text-right")
+                            "border-b border-[var(--color-kumo-line)] pb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)] " +
+                            (i === 0 ? "pr-3 text-left" : "text-right")
                           }
                         >
                           {h}
@@ -376,7 +375,7 @@ export default async function MonthPage({
                   </tbody>
                 </table>
 
-                <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+                <p className="mt-4 text-sm text-[var(--text-color-kumo-inactive)]">
                   Declared, not derived — a habit is here because you said so. Judged from the
                   day you made it: one added on the 8th is scored on 24 days, not 31. Not
                   counted in follow-through — habits have no hours to weigh.
@@ -391,7 +390,7 @@ export default async function MonthPage({
           <aside className="min-w-0">
             {!needsReconnect && !loadError && (
               <section>
-                <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+                <h3 className="mb-3.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
                   Where the hours went
                 </h3>
                 <CategoryRollupTable
@@ -409,14 +408,14 @@ export default async function MonthPage({
 function HabitRollupRow({ row }: { row: HabitRollup }) {
   const bad = row.ratio !== null && row.ratio < 0.6;
   const unit = row.habit.period === "week" ? "weeks" : "days";
-  const cell = "border-b border-[var(--color-kumo-line)] py-2.5";
+  const cell = "border-b border-[var(--color-kumo-line)] py-3.5";
 
   return (
     <tr>
-      <td className={`${cell} pr-2.5`}>
-        <div className="flex min-w-0 items-center gap-2.5">
+      <td className={`${cell} pr-3`}>
+        <div className="flex min-w-0 items-center gap-3">
           <span
-            className="size-2 shrink-0 rounded-full"
+            className="size-2.5 shrink-0 rounded-full"
             style={{ backgroundColor: row.habit.color }}
             aria-hidden
           />
@@ -467,11 +466,11 @@ function Heatmap({
   const pad = weekdayIndex(first); // Monday-first grid
 
   return (
-    <div className="grid max-w-[360px] grid-cols-7 gap-1.5">
+    <div className="grid max-w-[380px] grid-cols-7 gap-2">
       {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
         <div
           key={i}
-          className="text-center text-[10px] uppercase tracking-wide text-[var(--text-color-kumo-inactive)]"
+          className="text-center text-[11px] uppercase tracking-wide text-[var(--text-color-kumo-inactive)]"
         >
           {d}
         </div>
@@ -494,7 +493,7 @@ function Heatmap({
                 : `${date} · ${p}% follow-through`
             }
             className={
-              "flex aspect-square items-center justify-center rounded-md text-[10px] tabular-nums transition hover:ring-2 hover:ring-[var(--color-kumo-focus)] " +
+              "flex aspect-square items-center justify-center rounded-md text-[11px] tabular-nums transition hover:ring-2 hover:ring-[var(--color-kumo-focus)] " +
               (p === null
                 ? "border border-[var(--color-kumo-line)] text-[var(--text-color-kumo-inactive)]"
                 : "text-[var(--text-color-kumo-default)]") +

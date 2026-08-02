@@ -24,12 +24,12 @@ export function MetricHeader({
   const delta = now !== null && before !== null ? now - before : null;
 
   return (
-    <div className="mb-4 flex flex-wrap items-end gap-x-8 gap-y-4 border-b border-[var(--color-kumo-line)] pb-5">
+    <div className="mb-8 flex flex-wrap items-end gap-x-10 gap-y-5 border-b border-[var(--color-kumo-line)] pb-6">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
           {label}
         </p>
-        <p className="mt-1 font-mono text-5xl font-semibold leading-none tracking-tight tabular-nums">
+        <p className="mt-2 font-mono text-5xl font-semibold leading-none tracking-tight tabular-nums">
           {now === null ? (
             <span className="text-[var(--text-color-kumo-inactive)]">—</span>
           ) : (
@@ -39,7 +39,7 @@ export function MetricHeader({
             </>
           )}
         </p>
-        <p className="mt-1.5 text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
+        <p className="mt-2.5 text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
           {ft.plannedMin === 0 ? (
             "Nothing blocked"
           ) : (
@@ -66,12 +66,12 @@ export function MetricHeader({
         </p>
       </div>
 
-      <dl className="ml-auto flex gap-6 text-right">
+      <dl className="ml-auto flex gap-8 text-right">
         <div>
           <dd className="text-xl font-semibold tabular-nums text-[var(--color-kumo-success)]">
             {ft.keptCount}
           </dd>
-          <dt className="text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+          <dt className="mt-1 text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
             Kept
           </dt>
         </div>
@@ -79,7 +79,7 @@ export function MetricHeader({
           <dd className="text-xl font-semibold tabular-nums text-[var(--text-color-kumo-warning)]">
             {ft.missedCount}
           </dd>
-          <dt className="text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+          <dt className="mt-1 text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
             Missed
           </dt>
         </div>
@@ -87,7 +87,7 @@ export function MetricHeader({
           <dd className="text-xl font-semibold tabular-nums">
             {formatMinutes(ft.missedMin)}
           </dd>
-          <dt className="text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+          <dt className="mt-1 text-xs uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
             Lost
           </dt>
         </div>

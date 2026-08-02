@@ -52,7 +52,7 @@ export default async function Home({
 
   if (!resolved) {
     return (
-      <div className="w-full max-w-5xl px-6 py-6">
+      <div className="mx-auto w-full max-w-[97rem] px-6 py-8 sm:px-8 lg:px-10 lg:py-10">
         <TimezoneSync current={tz} resolved={false} />
         <p className="text-base text-[var(--text-color-kumo-subtle)]">Loading your day…</p>
       </div>
@@ -164,14 +164,14 @@ export default async function Home({
   });
 
   return (
-    // No max-width on the page: the cap lives on the COLUMNS instead. Capping the page at
-    // max-w-5xl and then carving a habits column out of it took the width from the blocks
-    // and left the space to their right empty — the blocks are the day's subject and
-    // shouldn't pay for a sidebar there was already room for.
-    <div className="w-full px-6 py-6">
+    // The width cap still lives on the COLUMNS — capping the page at max-w-5xl and carving
+    // a habits column out of it took the width from the blocks. The outer cap here equals
+    // the two column caps plus the gap and gutters, so it only CENTERS the content on a
+    // wide screen; it never squeezes a column.
+    <div className="mx-auto w-full max-w-[97rem] px-6 py-8 sm:px-8 lg:px-10 lg:py-10">
       <TimezoneSync current={tz} resolved />
 
-      <div className="mb-4 flex items-center gap-1.5">
+      <div className="mb-8 flex items-center gap-2">
         <Link
           href={`/?date=${shiftDate(date, -1)}`}
           className="ds-btn ds-btn--secondary ds-btn--sm"
@@ -186,9 +186,9 @@ export default async function Home({
         >
           ›
         </Link>
-        <h2 className="ml-1.5 text-base font-medium tabular-nums">{dateLabel}</h2>
+        <h2 className="ml-2 text-lg font-semibold tabular-nums">{dateLabel}</h2>
         {date !== today && (
-          <Link href="/" className="ds-btn ds-btn--ghost ds-btn--sm ml-1">
+          <Link href="/" className="ds-btn ds-btn--ghost ds-btn--sm ml-1.5">
             Today
           </Link>
         )}
@@ -206,7 +206,7 @@ export default async function Home({
        * nothing else, so scoping it to them draws the boundary the footnote in
        * <HabitList> otherwise has to explain twice.
        */}
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,64rem)_minmax(0,400px)]">
+      <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,64rem)_minmax(0,400px)] xl:gap-12">
         <div className="min-w-0">
           <MetricHeader
             label={`Follow-through · ${dateLabel}`}
@@ -233,8 +233,8 @@ export default async function Home({
            * needed Google at all.
            */}
           {!needsReconnect && !loadError && (
-            <section className="mb-6">
-              <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+            <section className="mb-10">
+              <h2 className="mb-3.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
                 Where the day went
               </h2>
               <CategoryRollupTable

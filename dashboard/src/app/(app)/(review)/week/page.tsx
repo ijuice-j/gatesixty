@@ -53,7 +53,7 @@ export default async function WeekPage({
 
   if (!resolved) {
     return (
-      <div className="w-full max-w-5xl px-6 py-6">
+      <div className="mx-auto w-full max-w-[97rem] px-6 py-8 sm:px-8 lg:px-10 lg:py-10">
         <TimezoneSync current={tz} resolved={false} />
         <p className="text-base text-[var(--text-color-kumo-subtle)]">Loading your week…</p>
       </div>
@@ -158,13 +158,12 @@ export default async function WeekPage({
   const rangeLabel = `${fmtDay(monday)} – ${fmtDay(shiftDate(monday, 6))}`;
 
   return (
-      // No max-width on the page: the cap lives on the COLUMNS instead, as on the day
-      // view — capping here and then carving a rail out of it would take the width from
-      // the grid, which is the subject.
-      <div className="w-full px-6 py-6">
+      // The width cap lives on the COLUMNS, as on the day view; the outer cap equals the
+      // columns plus gap and gutters, so it only centers the content on a wide screen.
+      <div className="mx-auto w-full max-w-[97rem] px-6 py-8 sm:px-8 lg:px-10 lg:py-10">
         <TimezoneSync current={tz} resolved />
 
-        <div className="mb-4 flex items-center gap-1.5">
+        <div className="mb-8 flex items-center gap-2">
           <Link
             href={`/week?date=${shiftDate(monday, -7)}`}
             className="ds-btn ds-btn--secondary ds-btn--sm"
@@ -179,7 +178,7 @@ export default async function WeekPage({
           >
             ›
           </Link>
-          <h2 className="ml-1.5 text-base font-medium tabular-nums">{rangeLabel}</h2>
+          <h2 className="ml-2 text-lg font-semibold tabular-nums">{rangeLabel}</h2>
         </div>
 
         {/*
@@ -192,7 +191,7 @@ export default async function WeekPage({
          * this is keyed by colour and asks where the time went. Stacked, they invited a
          * row-to-row comparison that never corresponded.
          */}
-        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,64rem)_minmax(0,400px)]">
+        <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,64rem)_minmax(0,400px)] xl:gap-12">
           <div className="min-w-0">
             <MetricHeader
               label={`Follow-through · ${rangeLabel}`}
@@ -205,7 +204,7 @@ export default async function WeekPage({
             {loadError && <LoadErrorBanner message={loadError} />}
 
             {!needsReconnect && !loadError && grid.length === 0 && (
-              <div className="ds-card ds-card--bordered mb-6">
+              <div className="ds-card ds-card--bordered mb-8">
                 <p className="text-base text-[var(--text-color-kumo-subtle)]">
                   Nothing blocked this week.
                 </p>
@@ -233,19 +232,19 @@ export default async function WeekPage({
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className="pb-2.5 pl-0.5" />
+                      <th className="pb-3 pl-0.5" />
                       {weekDates.map((date) => (
                         <th
                           key={date}
-                          className="px-1 pb-2.5 text-center text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]"
+                          className="px-1 pb-3 text-center text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]"
                         >
                           {fmtWeekday(date)}
-                          <span className="block text-[10px] font-normal tabular-nums text-[var(--text-color-kumo-inactive)]">
+                          <span className="mt-0.5 block text-[11px] font-normal tabular-nums text-[var(--text-color-kumo-inactive)]">
                             {fmtDayNum(date)}
                           </span>
                         </th>
                       ))}
-                      <th className="pb-2.5 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                      <th className="pb-3 text-right text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
                         Kept
                       </th>
                     </tr>
@@ -259,10 +258,10 @@ export default async function WeekPage({
                         const p = row.scheduled ? Math.round((row.kept / row.scheduled) * 100) : null;
                         return (
                           <tr key={row.key}>
-                            <td className="border-t border-[var(--color-kumo-line)] py-1.5 pr-4">
-                              <div className="flex min-w-0 items-center gap-2.5">
+                            <td className="border-t border-[var(--color-kumo-line)] py-2.5 pr-5">
+                              <div className="flex min-w-0 items-center gap-3">
                                 <span
-                                  className="size-2 shrink-0 rounded-full"
+                                  className="size-2.5 shrink-0 rounded-full"
                                   style={{ backgroundColor: row.color }}
                                   aria-hidden
                                 />
@@ -273,7 +272,7 @@ export default async function WeekPage({
                             {row.cells.map((cell, i) => (
                               <td
                                 key={weekDates[i]}
-                                className="border-t border-[var(--color-kumo-line)] px-1 py-1.5"
+                                className="border-t border-[var(--color-kumo-line)] px-1 py-2.5"
                               >
                                 <Mark
                                   status={cell}
@@ -282,8 +281,8 @@ export default async function WeekPage({
                               </td>
                             ))}
 
-                            <td className="whitespace-nowrap border-t border-[var(--color-kumo-line)] py-1.5 text-right">
-                              <span className="mr-2 text-sm tabular-nums text-[var(--text-color-kumo-inactive)]">
+                            <td className="whitespace-nowrap border-t border-[var(--color-kumo-line)] py-2.5 text-right">
+                              <span className="mr-2.5 text-sm tabular-nums text-[var(--text-color-kumo-inactive)]">
                                 {row.kept}/{row.scheduled}
                               </span>
                               <span
@@ -304,7 +303,7 @@ export default async function WeekPage({
                       {/* Closes the blocks section. It counts hours, and only the rows above
                           it have any. */}
                       <tr>
-                        <td className="border-t border-[var(--color-kumo-line)] pt-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
+                        <td className="border-t border-[var(--color-kumo-line)] pt-4 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
                           Follow-through
                         </td>
                         {perDay.map((d, i) => {
@@ -312,7 +311,7 @@ export default async function WeekPage({
                           return (
                             <td
                               key={weekDates[i]}
-                              className="border-t border-[var(--color-kumo-line)] pt-3 text-center font-mono text-base font-semibold tabular-nums"
+                              className="border-t border-[var(--color-kumo-line)] pt-4 text-center font-mono text-base font-semibold tabular-nums"
                             >
                               {p === null ? (
                                 <span className="font-normal text-[var(--text-color-kumo-inactive)]">
@@ -346,7 +345,7 @@ export default async function WeekPage({
                               // outside the record rather than inside it and blank.
                               <td
                                 key={cell.date}
-                                className="border-t border-[var(--color-kumo-line)] bg-[var(--color-kumo-recessed)] px-1 py-1.5"
+                                className="border-t border-[var(--color-kumo-line)] bg-[var(--color-kumo-recessed)] px-1 py-2.5"
                                 // A recessed cell is one of three "nothing promised" facts, and
                                 // they are not the same: not yet declared, paused (archived), or
                                 // an off weekday. If the habit was alive that day it must be the
@@ -364,7 +363,7 @@ export default async function WeekPage({
                             ) : (
                               <td
                                 key={cell.date}
-                                className="border-t border-[var(--color-kumo-line)] px-1 py-1.5"
+                                className="border-t border-[var(--color-kumo-line)] px-1 py-2.5"
                               >
                                 <HabitMark cell={cell} habit={row.habit} />
                               </td>
@@ -376,7 +375,7 @@ export default async function WeekPage({
                               percentage backed by hours and this is a count of things, and two
                               numbers of visibly different kinds must not be misread as one. The
                               gap where the percentage would go is that rule, left visible. */}
-                          <td className="whitespace-nowrap border-t border-[var(--color-kumo-line)] py-1.5 text-right">
+                          <td className="whitespace-nowrap border-t border-[var(--color-kumo-line)] py-2.5 text-right">
                             <span className="text-sm tabular-nums text-[var(--text-color-kumo-inactive)]">
                               {row.scored === 0 ? "—" : `${row.kept}/${row.scored}`}
                             </span>
@@ -396,13 +395,13 @@ export default async function WeekPage({
               </div>
             )}
 
-            <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+            <p className="mt-5 text-sm text-[var(--text-color-kumo-inactive)]">
               A day with nothing blocked scores <strong className="font-semibold">—</strong>, not 0%. A
               rest day is not a failure.
             </p>
 
             {hasHabits && (
-              <p className="mt-1.5 text-sm text-[var(--text-color-kumo-inactive)]">
+              <p className="mt-2.5 text-sm text-[var(--text-color-kumo-inactive)]">
                 Habits aren&apos;t counted in follow-through — they have no hours to weigh. A
                 weekly habit spans the week because the week is what it&apos;s judged on: it was
                 never missed on a Tuesday. A shaded day is one you hadn&apos;t declared the habit
@@ -417,7 +416,7 @@ export default async function WeekPage({
           <aside className="min-w-0">
             {!needsReconnect && !loadError && (
               <section>
-                <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+                <h3 className="mb-3.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
                   Where the hours went
                 </h3>
                 <CategoryRollupTable
@@ -446,8 +445,8 @@ function SectionLabel({
       <td
         colSpan={9}
         className={
-          "pb-1 pl-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)] " +
-          (spaced ? "pt-8" : "")
+          "pb-2 pl-0.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)] " +
+          (spaced ? "pt-10" : "")
         }
       >
         {children}
@@ -458,10 +457,10 @@ function SectionLabel({
 
 function HabitName({ habit }: { habit: Habit }) {
   return (
-    <td className="border-t border-[var(--color-kumo-line)] py-1.5 pr-4">
-      <div className="flex min-w-0 items-center gap-2.5">
+    <td className="border-t border-[var(--color-kumo-line)] py-2.5 pr-5">
+      <div className="flex min-w-0 items-center gap-3">
         <span
-          className="size-2 shrink-0 rounded-full"
+          className="size-2.5 shrink-0 rounded-full"
           style={{ backgroundColor: habit.color }}
           aria-hidden
         />
@@ -489,7 +488,7 @@ function WeekBand({ row }: { row: HabitWeeklyRow }) {
     : "nothing logged";
 
   return (
-    <td colSpan={8} className="border-t border-[var(--color-kumo-line)] px-1 py-1.5">
+    <td colSpan={8} className="border-t border-[var(--color-kumo-line)] px-1 py-2.5">
       <div className="relative flex h-6 items-center justify-center" title={`${row.habit.name} · ${days}`}>
         <span
           aria-hidden
@@ -562,7 +561,7 @@ function HabitMark({ cell, habit }: { cell: HabitCell; habit: Habit }) {
   if (cell.status === "untracked") {
     return (
       <span
-        className="mx-auto block size-6 pt-[5px] text-center text-[10px] tabular-nums text-[var(--text-color-kumo-subtle)]"
+        className="mx-auto block size-6 pt-[4px] text-center text-[11px] tabular-nums text-[var(--text-color-kumo-subtle)]"
         title={`${habit.name} · ${day} · ${
           cell.value === null ? "nothing logged" : trim(cell.value)
         } · not scored`}

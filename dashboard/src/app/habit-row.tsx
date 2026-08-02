@@ -25,16 +25,16 @@ export function HabitRow({ habit, archived }: { habit: Habit; archived: boolean 
 
   if (editing) {
     return (
-      <li className="p-3.5">
+      <li className="p-5">
         <EditForm habit={habit} onDone={() => setEditing(false)} />
       </li>
     );
   }
 
   return (
-    <li className="flex h-12 items-center gap-3.5 px-3.5">
+    <li className="flex h-14 items-center gap-4 px-5">
       <span
-        className="size-2 shrink-0 rounded-full"
+        className="size-2.5 shrink-0 rounded-full"
         style={{ backgroundColor: habit.color }}
         aria-hidden
       />
@@ -95,7 +95,7 @@ function EditForm({ habit, onDone }: { habit: Habit; onDone: () => void }) {
       <input type="hidden" name="habit_id" value={habit.id} />
       <input type="hidden" name="color" value={color} />
 
-      <div className="grid max-w-md gap-x-4 gap-y-2 sm:grid-cols-[1fr_auto_auto]">
+      <div className="grid max-w-lg gap-x-5 gap-y-2.5 sm:grid-cols-[1fr_auto_auto]">
         <div className="ds-field">
           <label className="ds-label" htmlFor={`name-${habit.id}`}>
             Name
@@ -114,7 +114,7 @@ function EditForm({ habit, onDone }: { habit: Habit; onDone: () => void }) {
             so there is nothing here to offer. */}
         {habit.kind === "count" && (
           <>
-            <div className="ds-field w-24">
+            <div className="ds-field w-28">
               <label className="ds-label" htmlFor={`target-${habit.id}`}>
                 Target
               </label>
@@ -127,7 +127,7 @@ function EditForm({ habit, onDone }: { habit: Habit; onDone: () => void }) {
                 className="ds-input font-mono tabular-nums"
               />
             </div>
-            <div className="ds-field w-24">
+            <div className="ds-field w-28">
               <label className="ds-label" htmlFor={`unit-${habit.id}`}>
                 Unit
               </label>
@@ -148,7 +148,7 @@ function EditForm({ habit, onDone }: { habit: Habit; onDone: () => void }) {
         )}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-5">
         <ColorPicker value={color} onChange={setColor} />
         <div className="flex items-center gap-2">
           <button
@@ -166,7 +166,7 @@ function EditForm({ habit, onDone }: { habit: Habit; onDone: () => void }) {
 
       {/* Kind and period decide what a logged value MEANS, so they aren't editable —
           say why rather than just leaving them out. */}
-      <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+      <p className="mt-4 text-sm text-[var(--text-color-kumo-inactive)]">
         {measuredAs(habit)} — archive and add a new one to change that. Old entries stay
         readable under the terms they were recorded.
       </p>

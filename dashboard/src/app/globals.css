@@ -47,3 +47,93 @@ body {
   color: var(--text-color-kumo-default);
   font-family: var(--font-sans);
 }
+
+/* =============================================================================
+ * BREATHABLE OVERRIDES — app layer, not the design system
+ *
+ * The vendored system reproduces the target's DENSITY: 13/14px type at ~1.2
+ * leading, 32px controls, 8px radius. This app wants the same bones with more
+ * air, so the density knobs are re-pointed here rather than by forking the
+ * library. Two mechanisms, matching how the system itself wins its overrides:
+ *
+ *   1. TYPE + RADIUS at an unlayered :root AFTER the token import — later
+ *      source order at equal specificity, exactly the trick the tokens play
+ *      on Tailwind's @layer theme.
+ *   2. RECIPE KNOBS inside @layer components AFTER the recipe import. Same
+ *      layer, later source. Every size RUNG is restated, not just the base:
+ *      a later base rule would otherwise beat the earlier --sm/--lg variant
+ *      declarations at equal specificity and flatten the ramp.
+ * ========================================================================== */
+
+:root {
+  /* One step up and looser lines: the workhorse sizes stop being "dense". */
+  --text-sm: 14px;
+  --text-sm--line-height: 1.5;
+  --text-base: 15px;
+  --text-base--line-height: 1.6;
+  --text-lg: 17px;
+  --text-lg--line-height: 1.5;
+
+  /* Body rhythm: taller leading, no compressive tracking. */
+  --tw-leading: 1.6;
+  --tw-tracking: 0em;
+
+  /* Softer corners — 10px house radius instead of 8. */
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+}
+
+/* Roomier chrome. The recipe declares these on the shell inside
+ * @layer components; unlayered wins whatever the specificity. */
+.ds-app-shell,
+[data-sidebar-wrapper] {
+  --header-height: 64px;
+  --sidebar-width: 17.5rem; /* 280px expanded rail */
+}
+
+@layer components {
+  /* Control ramp, one rung taller across the board (md 36→40, sm 32→36). */
+  .ds .ds-btn {
+    --ds-btn-h: calc(var(--spacing) * 10);
+    --ds-btn-px: calc(var(--spacing) * 3.5);
+    --ds-btn-gap: calc(var(--spacing) * 2);
+  }
+  .ds .ds-btn--xs {
+    --ds-btn-h: calc(var(--spacing) * 7);
+    --ds-btn-px: calc(var(--spacing) * 2.5);
+    --ds-btn-gap: calc(var(--spacing) * 1);
+  }
+  .ds .ds-btn--sm {
+    --ds-btn-h: calc(var(--spacing) * 9);
+    --ds-btn-px: calc(var(--spacing) * 3);
+    --ds-btn-gap: calc(var(--spacing) * 1.5);
+  }
+  .ds .ds-btn--md {
+    --ds-btn-h: calc(var(--spacing) * 10);
+  }
+  .ds .ds-btn--lg {
+    --ds-btn-h: calc(var(--spacing) * 11);
+    --ds-btn-px: calc(var(--spacing) * 4.5);
+  }
+
+  /* Fields ride the same ramp. */
+  .ds {
+    --ds-field-height: calc(var(--spacing) * 10);
+    --ds-field-pad-x: calc(var(--spacing) * 3.5);
+  }
+  .ds .ds-input--sm {
+    --ds-field-height: calc(var(--spacing) * 9);
+  }
+  .ds .ds-input--lg {
+    --ds-field-height: calc(var(--spacing) * 11);
+  }
+
+  /* Cards inhale: 16→20px, bordered 24→28px. List cards pass p-0 (a utility,
+   * which still outranks this layer) so their rows pad themselves. */
+  .ds .ds-card {
+    padding: calc(var(--spacing) * 5);
+  }
+  .ds .ds-card--bordered {
+    padding: calc(var(--spacing) * 7);
+  }
+}

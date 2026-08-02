@@ -39,7 +39,7 @@ export function Snackbar({
     // tech watches an existing region for changes, so appearing wholesale can be missed
     // entirely. That would silently undo the point of showing a failure at all.
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center p-4"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center p-6"
       // Polite: this narrates the result of something you just did, so it should not
       // interrupt a screen reader mid-sentence.
       role="status"

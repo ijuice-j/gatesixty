@@ -42,9 +42,9 @@ export function DayList({
 
   return (
     <>
-      <div className="mb-3 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-3">
         <div
-          className="flex gap-0.5 rounded-lg bg-[var(--color-kumo-recessed)] p-0.5"
+          className="flex gap-1 rounded-xl bg-[var(--color-kumo-recessed)] p-1"
           role="tablist"
           aria-label="Filter blocks"
         >
@@ -56,7 +56,7 @@ export function DayList({
               aria-selected={filter === f.k}
               onClick={() => setFilter(f.k)}
               className={
-                "h-6 cursor-pointer rounded-md px-2.5 text-sm transition " +
+                "h-8 cursor-pointer rounded-lg px-3.5 text-sm transition " +
                 (filter === f.k
                   ? "bg-[var(--color-kumo-base)] font-medium text-[var(--text-color-kumo-default)] shadow-sm"
                   : "text-[var(--text-color-kumo-subtle)] hover:text-[var(--text-color-kumo-default)]")
@@ -73,7 +73,7 @@ export function DayList({
 
       <div className="ds-card ds-card--bordered gap-0 overflow-hidden p-0">
         {shown.length === 0 ? (
-          <p className="px-4 py-8 text-center text-base text-[var(--text-color-kumo-subtle)]">
+          <p className="px-6 py-14 text-center text-base text-[var(--text-color-kumo-subtle)]">
             Nothing here.
           </p>
         ) : (
@@ -106,15 +106,17 @@ function Row({
   return (
     <li
       className={
-        "flex h-12 items-center gap-3.5 border-l-[3px] pr-3.5 transition " +
+        "flex h-14 items-center gap-4 border-l-[3px] pr-5 transition " +
         (missed
-          ? "border-l-[var(--color-kumo-warning)] bg-[color-mix(in_oklab,var(--color-kumo-warning-tint)_55%,transparent)] hover:bg-[var(--color-kumo-warning-tint)]"
+          ? // The left accent is the signal; the fill is only a whisper of it. At 55% the
+            // tint read as a solid slab in dark mode and shouted over the accent.
+            "border-l-[var(--color-kumo-warning)] bg-[color-mix(in_oklab,var(--color-kumo-warning-tint)_16%,transparent)] hover:bg-[color-mix(in_oklab,var(--color-kumo-warning-tint)_30%,transparent)]"
           : "border-l-transparent hover:bg-[var(--color-kumo-fill-hover)]")
       }
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2.5 pl-3.5">
+      <div className="flex min-w-0 flex-1 items-center gap-3 pl-5">
         <span
-          className="size-2 shrink-0 rounded-full"
+          className="size-2.5 shrink-0 rounded-full"
           style={{ backgroundColor: item.color }}
           aria-hidden
         />
@@ -129,7 +131,7 @@ function Row({
       </div>
 
       {/* Duration, weighted — the whole reason the metric counts hours. */}
-      <div className="hidden w-[152px] shrink-0 items-center gap-2.5 sm:flex">
+      <div className="hidden w-[160px] shrink-0 items-center gap-3 sm:flex">
         <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-kumo-fill)]">
           <span
             className="block h-full rounded-full"
@@ -146,12 +148,12 @@ function Row({
         {/* Fixed width, not content width: every bar has to start at the same x for the
             lengths to be comparable at all. Wide enough for the longest string
             formatMinutes can return ("12h 45m"), so it never wraps to a second line. */}
-        <span className="w-16 shrink-0 whitespace-nowrap text-right font-mono text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
+        <span className="w-[72px] shrink-0 whitespace-nowrap text-right font-mono text-sm tabular-nums text-[var(--text-color-kumo-subtle)]">
           {min ? formatMinutes(min) : "—"}
         </span>
       </div>
 
-      <span className="hidden w-[112px] shrink-0 whitespace-nowrap font-mono text-sm tabular-nums text-[var(--text-color-kumo-subtle)] md:block">
+      <span className="hidden w-[124px] shrink-0 whitespace-nowrap font-mono text-sm tabular-nums text-[var(--text-color-kumo-subtle)] md:block">
         {window(item.start, item.end, tz)}
       </span>
 

@@ -23,9 +23,9 @@ export default async function CategoriesPage() {
   const named = byColorId.size;
 
   return (
-    <div className="w-full max-w-3xl px-6 py-6">
+    <div className="mx-auto w-full max-w-3xl px-6 py-8 sm:px-8 lg:py-10">
       <section>
-        <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+        <h2 className="mb-3.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
           Name your calendar colours
         </h2>
 
@@ -43,7 +43,7 @@ export default async function CategoriesPage() {
           </div>
         </div>
 
-        <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+        <p className="mt-4 text-sm text-[var(--text-color-kumo-inactive)]">
           {named === 0 ? (
             <>
               Nothing named yet. Colour an event in Google Calendar, name that colour
@@ -72,12 +72,12 @@ export default async function CategoriesPage() {
        * The retroactive note is the important one: it is the property that makes this
        * worth adopting at all, and it is not guessable from a list of colour swatches.
        */}
-      <section className="mt-8">
-        <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+      <section className="mt-12">
+        <h2 className="mb-3.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
           How this works
         </h2>
         <div className="ds-card ds-card--bordered">
-          <ul className="flex list-disc flex-col gap-2 pl-4 text-base text-[var(--text-color-kumo-subtle)]">
+          <ul className="flex list-disc flex-col gap-3 pl-5 text-base text-[var(--text-color-kumo-subtle)]">
             <li>
               A block&apos;s category is its Google Calendar colour. Set the colour on
               the event; a recurring series only needs it once.
