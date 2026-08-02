@@ -45,9 +45,10 @@ const NAV = [
 ];
 
 /**
- * The Cloudflare-dashboard app shell: a fixed sidebar rail beside a sticky 58px header over
- * the canvas. `--sidebar-nav-width` defaults to the COLLAPSED icon rail, so the expanded
- * width has to be opted into explicitly.
+ * The Cloudflare-dashboard app shell: a fixed sidebar rail beside a sticky header over
+ * the canvas (64px here — globals.css relaxes the recipe's 58px). `--sidebar-nav-width`
+ * defaults to the COLLAPSED icon rail, so the expanded width has to be opted into
+ * explicitly.
  */
 export function AppShell({
   email,
@@ -69,8 +70,8 @@ export function AppShell({
     >
       <aside className="ds-sidebar">
         <div className="ds-sidebar__container flex h-full flex-col">
-          <div className="ds-sidebar__header flex h-[var(--header-height)] items-center px-3">
-            <Link href="/" className="flex items-center gap-2">
+          <div className="ds-sidebar__header flex h-[var(--header-height)] items-center px-4">
+            <Link href="/" className="flex items-center gap-2.5">
               <span className="ds-sidebar__icon !opacity-100 text-[var(--text-color-kumo-brand)]">
                 <svg {...ICON} aria-hidden>
                   <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
@@ -81,14 +82,14 @@ export function AppShell({
             </Link>
           </div>
 
-          <nav className="ds-sidebar__nav flex-1 px-2 py-3">
+          <nav className="ds-sidebar__nav flex-1 px-3 py-5">
             <div className="ds-sidebar__group">
-              <div className="ds-sidebar__group-label px-2 pb-1">
+              <div className="ds-sidebar__group-label px-2.5 pb-2">
                 <span className="text-xs font-medium uppercase tracking-wide text-[var(--text-color-kumo-subtle)]">
                   Activity
                 </span>
               </div>
-              <ul className="ds-sidebar__menu flex flex-col gap-0.5">
+              <ul className="ds-sidebar__menu flex flex-col gap-1">
                 {NAV.map((item) => {
                   const active = item.match.includes(pathname);
                   return (
@@ -97,7 +98,7 @@ export function AppShell({
                         href={item.href}
                         data-active={active || undefined}
                         aria-current={active ? "page" : undefined}
-                        className="ds-sidebar__menu-button flex h-8 items-center gap-2 rounded-md px-2 text-base"
+                        className="ds-sidebar__menu-button flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-base"
                       >
                         <span className="ds-sidebar__icon">{item.icon}</span>
                         <span>{item.label}</span>
@@ -109,14 +110,14 @@ export function AppShell({
             </div>
           </nav>
 
-          <div className="ds-sidebar__footer border-t border-[var(--color-kumo-line)] p-3">
+          <div className="ds-sidebar__footer border-t border-[var(--color-kumo-line)] p-4">
             <p
               className="truncate text-sm text-[var(--text-color-kumo-subtle)]"
               title={email}
             >
               {email}
             </p>
-            <form action="/auth/signout" method="post" className="mt-2">
+            <form action="/auth/signout" method="post" className="mt-3">
               <button className="ds-btn ds-btn--ghost ds-btn--sm w-full justify-start" type="submit">
                 Sign out
               </button>
@@ -126,9 +127,9 @@ export function AppShell({
       </aside>
 
       <div className="ds-app-shell__column">
-        <header className="ds-app-header flex h-[var(--header-height)] items-center justify-between gap-4 border-b border-[var(--color-kumo-line)] bg-[var(--color-kumo-base)] px-6">
-          <h1 className="text-base font-semibold tracking-tight">{title}</h1>
-          <div className="flex items-center gap-2">
+        <header className="ds-app-header flex h-[var(--header-height)] items-center justify-between gap-4 border-b border-[var(--color-kumo-line)] bg-[var(--color-kumo-base)] px-6 sm:px-8">
+          <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+          <div className="flex items-center gap-3">
             {actions}
             <ThemeToggle />
           </div>

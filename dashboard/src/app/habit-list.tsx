@@ -36,7 +36,7 @@ export function HabitList({
 }) {
   return (
     <section>
-      <div className="mb-2.5 flex items-baseline justify-between gap-2">
+      <div className="mb-3.5 flex items-baseline justify-between gap-2">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
           Habits
         </h3>
@@ -80,7 +80,7 @@ export function HabitList({
 
       {/* The app already says a rest day scores — and not 0%. Same honesty here: say out
           loud what this number is not. */}
-      <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+      <p className="mt-4 text-sm text-[var(--text-color-kumo-inactive)]">
         Not counted in follow-through — habits have no hours to weigh.
       </p>
     </section>
@@ -104,9 +104,9 @@ function Row({
   // and nothing to score. It's back on its next scheduled day.
   if (!row.scheduled) {
     return (
-      <li className="flex items-center gap-2 px-3 py-2.5 opacity-60">
+      <li className="flex items-center gap-2.5 px-5 py-3.5 opacity-60">
         <span
-          className="size-2 shrink-0 rounded-full"
+          className="size-2.5 shrink-0 rounded-full"
           style={{ backgroundColor: habit.color }}
           aria-hidden
         />
@@ -123,15 +123,16 @@ function Row({
   return (
     <li
       className={
-        "border-l-[3px] px-3 py-2.5 transition " +
+        "border-l-[3px] px-5 py-4 transition " +
         (missed
-          ? "border-l-[var(--color-kumo-warning)] bg-[color-mix(in_oklab,var(--color-kumo-warning-tint)_55%,transparent)]"
+          ? // Accent over fill, matching the day list's missed rows.
+            "border-l-[var(--color-kumo-warning)] bg-[color-mix(in_oklab,var(--color-kumo-warning-tint)_16%,transparent)]"
           : "border-l-transparent")
       }
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         <span
-          className="size-2 shrink-0 rounded-full"
+          className="size-2.5 shrink-0 rounded-full"
           style={{ backgroundColor: habit.color }}
           aria-hidden
         />
@@ -143,7 +144,7 @@ function Row({
         )}
       </div>
 
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-3 flex items-center gap-2.5">
         {habit.kind === "check" ? (
           <CheckControl row={row} date={date} editable={editable} />
         ) : (
@@ -167,7 +168,7 @@ function Meter({ row }: { row: HabitProgress }) {
   const filled = Math.min(100, Math.round((row.progress / target) * 100));
   return (
     <span
-      className="mt-2 block h-1 overflow-hidden rounded-full bg-[var(--color-kumo-fill)]"
+      className="mt-3 block h-1.5 overflow-hidden rounded-full bg-[var(--color-kumo-fill)]"
       role="progressbar"
       aria-valuenow={filled}
       aria-valuemin={0}

@@ -46,8 +46,8 @@ export function CategoryRollupTable({
               <th
                 key={h}
                 className={
-                  "border-b border-[var(--color-kumo-line)] pb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)] " +
-                  (i === 0 ? "pr-2.5 text-left" : "text-right")
+                  "border-b border-[var(--color-kumo-line)] pb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-color-kumo-subtle)] " +
+                  (i === 0 ? "pr-3 text-left" : "text-right")
                 }
               >
                 {h}
@@ -59,16 +59,16 @@ export function CategoryRollupTable({
           {rows.map((row) => {
             const p = pct(row.ft.ratio);
             const bad = p !== null && p < 60;
-            const cell = "border-b border-[var(--color-kumo-line)] py-2.5";
+            const cell = "border-b border-[var(--color-kumo-line)] py-3.5";
             const hex = row.colorId ? HEX.get(row.colorId) : undefined;
 
             return (
               <tr key={row.key}>
-                <td className={`${cell} pr-2.5`}>
-                  <div className="flex min-w-0 items-center gap-2.5">
+                <td className={`${cell} pr-3`}>
+                  <div className="flex min-w-0 items-center gap-3">
                     <span
                       className={
-                        "size-2 shrink-0 rounded-full " +
+                        "size-2.5 shrink-0 rounded-full " +
                         (hex ? "" : "border border-[var(--color-kumo-line)]")
                       }
                       style={hex ? { backgroundColor: hex } : undefined}
@@ -86,7 +86,7 @@ export function CategoryRollupTable({
                 </td>
 
                 <td className={`${cell} whitespace-nowrap text-right`}>
-                  <span className="mr-2 inline-block h-1 w-20 overflow-hidden rounded-full bg-[var(--color-kumo-fill)] align-middle">
+                  <span className="mr-2.5 inline-block h-1.5 w-24 overflow-hidden rounded-full bg-[var(--color-kumo-fill)] align-middle">
                     <span
                       className="block h-full rounded-full"
                       style={{
@@ -130,7 +130,7 @@ export function CategoryRollupTable({
         </tbody>
       </table>
 
-      <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+      <p className="mt-4 text-sm text-[var(--text-color-kumo-inactive)]">
         {emptyHint ? (
           <>
             Grouped by Google Calendar colour.{" "}

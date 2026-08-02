@@ -31,10 +31,10 @@ export default async function LoginPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
-      <div className="ds-card ds-card--elevated w-full max-w-sm">
+      <div className="ds-card ds-card--elevated w-full max-w-md p-8">
         <div className="ds-card__body text-center">
           <h1 className="text-2xl font-semibold tracking-tight">GateSixty</h1>
-          <p className="mt-2 text-sm text-[var(--text-color-kumo-subtle)]">
+          <p className="mt-3 text-sm text-[var(--text-color-kumo-subtle)]">
             Review what you actually did.
           </p>
 

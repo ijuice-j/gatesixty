@@ -11,48 +11,55 @@
  */
 export default function Loading() {
   return (
-    <div className="w-full max-w-5xl px-6 py-6" aria-busy="true" aria-live="polite">
+    <div
+      className="mx-auto w-full max-w-[97rem] px-6 py-8 sm:px-8 lg:px-10 lg:py-10"
+      aria-busy="true"
+      aria-live="polite"
+    >
       <span className="sr-only">Loading…</span>
 
-      {/* date nav */}
-      <div className="mb-4 flex items-center gap-1.5">
-        <Bar className="h-8 w-8" />
-        <Bar className="h-8 w-8" />
-        <Bar className="ml-1.5 h-5 w-28" />
-      </div>
-
-      {/* the metric */}
-      <div className="mb-4 flex items-end gap-8 border-b border-[var(--color-kumo-line)] pb-5">
-        <div>
-          <Bar className="h-3 w-40" />
-          <Bar className="mt-2 h-12 w-32" />
-          <Bar className="mt-2 h-4 w-56" />
+      {/* Everything below mirrors the day view's MAIN column, so cap it the same way. */}
+      <div className="max-w-[64rem]">
+        {/* date nav */}
+        <div className="mb-8 flex items-center gap-2">
+          <Bar className="h-9 w-9" />
+          <Bar className="h-9 w-9" />
+          <Bar className="ml-2 h-6 w-32" />
         </div>
-        <div className="ml-auto flex gap-6">
-          <Bar className="h-10 w-12" />
-          <Bar className="h-10 w-12" />
-          <Bar className="h-10 w-16" />
+
+        {/* the metric */}
+        <div className="mb-8 flex items-end gap-10 border-b border-[var(--color-kumo-line)] pb-6">
+          <div>
+            <Bar className="h-3 w-40" />
+            <Bar className="mt-3 h-12 w-32" />
+            <Bar className="mt-3 h-4 w-56" />
+          </div>
+          <div className="ml-auto flex gap-8">
+            <Bar className="h-10 w-12" />
+            <Bar className="h-10 w-12" />
+            <Bar className="h-10 w-16" />
+          </div>
         </div>
-      </div>
 
-      {/* toolbar */}
-      <div className="mb-3 flex items-center gap-3">
-        <Bar className="h-7 w-44" />
-      </div>
+        {/* toolbar */}
+        <div className="mb-4 flex items-center gap-3">
+          <Bar className="h-8 w-52" />
+        </div>
 
-      {/* rows */}
-      <div className="ds-card ds-card--bordered gap-0 overflow-hidden p-0">
-        <ul className="divide-y divide-[var(--color-kumo-line)]">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <li key={i} className="flex h-12 items-center gap-3.5 px-3.5">
-              <Bar className="size-2 rounded-full" />
-              <Bar className="h-4 flex-1 max-w-[220px]" />
-              <Bar className="ml-auto hidden h-1.5 w-[132px] sm:block" />
-              <Bar className="hidden h-4 w-[92px] md:block" />
-              <Bar className="h-6 w-24 rounded-full" />
-            </li>
-          ))}
-        </ul>
+        {/* rows */}
+        <div className="ds-card ds-card--bordered gap-0 overflow-hidden p-0">
+          <ul className="divide-y divide-[var(--color-kumo-line)]">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <li key={i} className="flex h-14 items-center gap-4 px-5">
+                <Bar className="size-2.5 rounded-full" />
+                <Bar className="h-4 flex-1 max-w-[220px]" />
+                <Bar className="ml-auto hidden h-1.5 w-[136px] sm:block" />
+                <Bar className="hidden h-4 w-[92px] md:block" />
+                <Bar className="h-6 w-24 rounded-full" />
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   );

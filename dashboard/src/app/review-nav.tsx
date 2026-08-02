@@ -25,7 +25,7 @@ export function ZoomNav() {
 
   return (
     <div
-      className="flex gap-0.5 rounded-lg bg-[var(--color-kumo-recessed)] p-0.5"
+      className="flex gap-1 rounded-xl bg-[var(--color-kumo-recessed)] p-1"
       role="tablist"
       aria-label="Zoom level"
     >
@@ -38,7 +38,7 @@ export function ZoomNav() {
             role="tab"
             aria-selected={active}
             className={
-              "flex h-7 items-center rounded-md px-3 text-sm transition " +
+              "flex h-8 items-center rounded-lg px-3.5 text-sm transition " +
               (active
                 ? "bg-[var(--color-kumo-base)] font-medium text-[var(--text-color-kumo-default)] shadow-sm"
                 : "text-[var(--text-color-kumo-subtle)] hover:text-[var(--text-color-kumo-default)]")

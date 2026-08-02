@@ -23,7 +23,7 @@ export function ColorPicker({
   onChange: (c: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2.5">
       <span className="text-sm text-[var(--text-color-kumo-subtle)]">Colour</span>
       {COLORS.map((c) => (
         <button
@@ -33,7 +33,7 @@ export function ColorPicker({
           aria-label={`Colour ${c}`}
           aria-pressed={value === c}
           className={
-            "size-5 cursor-pointer rounded-full transition " +
+            "size-6 cursor-pointer rounded-full transition " +
             (value === c
               ? "ring-2 ring-[var(--color-kumo-focus)] ring-offset-2 ring-offset-[var(--color-kumo-base)]"
               : "")

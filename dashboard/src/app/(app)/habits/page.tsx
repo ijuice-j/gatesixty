@@ -30,11 +30,11 @@ export default async function HabitsPage() {
   const archived = all.filter((h) => h.archived_on !== null);
 
   return (
-    <div className="w-full max-w-5xl px-6 py-6">
+    <div className="mx-auto w-full max-w-4xl px-6 py-8 sm:px-8 lg:py-10">
       <HabitForm />
 
-      <section className="mt-8">
-        <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+      <section className="mt-12">
+        <h2 className="mb-3.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
           Your habits
         </h2>
 
@@ -58,15 +58,15 @@ export default async function HabitsPage() {
           </div>
         )}
 
-        <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+        <p className="mt-4 text-sm text-[var(--text-color-kumo-inactive)]">
           Logged on the day view, not here. A habit with no target is tracked and never
           scored.
         </p>
       </section>
 
       {archived.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
+        <section className="mt-12">
+          <h2 className="mb-3.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-color-kumo-subtle)]">
             Archived
           </h2>
           <div className="ds-card ds-card--bordered gap-0 overflow-hidden p-0">
@@ -76,7 +76,7 @@ export default async function HabitsPage() {
               ))}
             </ul>
           </div>
-          <p className="mt-3 text-sm text-[var(--text-color-kumo-inactive)]">
+          <p className="mt-4 text-sm text-[var(--text-color-kumo-inactive)]">
             Archived, not deleted — everything you logged is still there, and comes back
             with it.
           </p>

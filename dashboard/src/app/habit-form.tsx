@@ -56,8 +56,8 @@ export function HabitForm() {
       <input type="hidden" name="period" value={mode === "week" ? "week" : "day"} />
       <input type="hidden" name="weekdays" value={mode === "weekdays" ? days.join(",") : ""} />
 
-      <div className="grid gap-4">
-        <div className="ds-field max-w-md">
+      <div className="grid gap-5">
+        <div className="ds-field max-w-lg">
           <label className="ds-label" htmlFor="habit-name">
             Name
           </label>
@@ -71,7 +71,7 @@ export function HabitForm() {
           />
         </div>
 
-        <div className="grid max-w-md gap-4 sm:grid-cols-2">
+        <div className="grid max-w-lg gap-5 sm:grid-cols-2">
           <RadioField
             label="Track as"
             name="kind"
@@ -98,7 +98,7 @@ export function HabitForm() {
         {/* Only when the schedule is specific weekdays. A weekly quota schedules by the
             week, and a plain daily habit is every day — neither needs a day picker. */}
         {mode === "weekdays" && (
-          <div className="ds-field max-w-md">
+          <div className="ds-field max-w-lg">
             <span className="ds-label">On</span>
             <WeekdayPicker value={days} onChange={setDays} />
             <p className="ds-helper">
@@ -110,7 +110,7 @@ export function HabitForm() {
         {/* Only a counted habit has a goal or a unit — a check habit's target is 1 by
             definition, and the database rejects a unit on one. */}
         {kind === "count" && (
-          <div className="grid max-w-md gap-x-4 gap-y-2 sm:grid-cols-2">
+          <div className="grid max-w-lg gap-x-5 gap-y-2.5 sm:grid-cols-2">
             <div className="ds-field">
               <label className="ds-label" htmlFor="habit-target">
                 Target
@@ -144,7 +144,7 @@ export function HabitForm() {
         )}
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--color-kumo-line)] pt-4">
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-5 border-t border-[var(--color-kumo-line)] pt-5">
         <ColorPicker value={color} onChange={setColor} />
 
         <button
@@ -193,7 +193,7 @@ function WeekdayPicker({
     onChange(value.includes(i) ? value.filter((d) => d !== i) : [...value, i]);
 
   return (
-    <div className="flex items-center gap-1.5" role="group" aria-label="Repeat on">
+    <div className="flex items-center gap-2" role="group" aria-label="Repeat on">
       {WEEKDAYS.map(({ i, short, name }) => {
         const on = value.includes(i);
         return (
@@ -204,7 +204,7 @@ function WeekdayPicker({
             aria-label={name}
             aria-pressed={on}
             className={
-              "size-9 rounded-full text-sm font-medium tabular-nums transition " +
+              "size-10 rounded-full text-sm font-medium tabular-nums transition " +
               (on
                 ? "bg-[var(--color-kumo-brand)] text-[var(--text-color-kumo-inverse)]"
                 : "bg-[var(--color-kumo-fill)] text-[var(--text-color-kumo-subtle)] hover:bg-[var(--color-kumo-fill-hover)]")
@@ -242,7 +242,7 @@ function RadioField({
   return (
     <div className="ds-field" role="radiogroup" aria-label={label}>
       <span className="ds-label">{label}</span>
-      <div className="ds-radio-group flex h-9 items-center gap-4">
+      <div className="ds-radio-group flex h-10 items-center gap-5">
         {options.map((o) => (
           <label key={o.value} className="ds-choice">
             <input

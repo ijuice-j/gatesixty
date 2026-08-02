@@ -29,16 +29,16 @@ export function CategoryRow({
     <form
       ref={formRef}
       action={saveCategory}
-      className="flex h-12 items-center gap-3.5 px-3.5"
+      className="flex h-14 items-center gap-4 px-5"
     >
       <input type="hidden" name="color_id" value={colorId} />
 
       <span
-        className="size-3.5 shrink-0 rounded-full"
+        className="size-4 shrink-0 rounded-full"
         style={{ backgroundColor: hex }}
         aria-hidden
       />
-      <span className="w-24 shrink-0 truncate text-sm text-[var(--text-color-kumo-subtle)]">
+      <span className="w-28 shrink-0 truncate text-sm text-[var(--text-color-kumo-subtle)]">
         {googleName}
       </span>
 
